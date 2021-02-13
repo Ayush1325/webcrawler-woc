@@ -8,3 +8,6 @@ a domain and url.
 * Tech Stack
 - [[https://www.rust-lang.org/][Rust]]
 - [[https://github.com/seanmonstar/reqwest][reqwest]]
+- [[https://github.com/utkarshkukreti/select.rs][select]]
+* Resources
+- [[https://rolisz.ro/2020/03/01/web-crawler-in-rust/]]
