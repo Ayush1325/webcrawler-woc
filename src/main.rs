@@ -1,3 +1,5 @@
+mod retriever;
+
 fn main() {
-    println!("Hello, world!");
+    retriever::temp();
 }
