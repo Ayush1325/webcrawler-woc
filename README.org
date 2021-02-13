@@ -1,0 +1,10 @@
+#+TITLE: Readme
+
+* Webcrawler
+- The project basically crawls the webpage and collects as much information as possible,
+like external links, mails, etc. Like a web crawler used by search engines but specific for
+a domain and url.
+- It is a project for WOC.
+* Tech Stack
+- [[https://www.rust-lang.org/][Rust]]
+- [[https://github.com/seanmonstar/reqwest][reqwest]]
