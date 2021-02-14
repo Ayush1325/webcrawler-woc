@@ -4,10 +4,10 @@ use select::document::Document;
 use select::predicate::Name;
 use std::collections::HashSet;
 
-fn get_page(url: &Url) -> Result<reqwest::blocking::Response, Box<dyn std::error::Error>> {
+async fn get_page(url: &Url) -> Result<reqwest::Response, Box<dyn std::error::Error>> {
     //! Function to make get request to a single url.
     //! Impure Function
-    let resp = reqwest::blocking::get(url.clone())?;
+    let resp = reqwest::get(url.clone()).await?;
     let status = resp.status();
     if status != StatusCode::OK {
         let err = Box::from(format!("GET Error Code: {}", status.as_u16()));
@@ -54,10 +54,10 @@ fn normalize_url(url: &str, base_url: &Url) -> Option<Url> {
     }
 }
 
-pub fn temp() -> () {
+pub async fn temp() -> () {
     let url = Url::parse("https://www.wikipedia.org/").unwrap();
-    let page = get_page(&url).unwrap();
-    let html = page.text().unwrap();
+    let page = get_page(&url).await.unwrap();
+    let html = page.text().await.unwrap();
     let links = get_links_from_html(&html, &url);
     links.iter().for_each(|x| println!("{}", x.as_str()));
 }

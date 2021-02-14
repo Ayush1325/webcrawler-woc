@@ -1,5 +1,6 @@
 mod retriever;
 
-fn main() {
-    retriever::temp();
+#[tokio::main]
+async fn main() {
+    retriever::temp().await;
 }
