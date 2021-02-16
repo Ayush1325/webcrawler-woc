@@ -6,18 +6,15 @@ use std::collections::HashSet;
 
 async fn get_page(url: &str) -> Result<reqwest::Response, reqwest::Error> {
     //! Function to make get request to a single url.
-    //! Impure Function
     let resp = reqwest::get(url).await?;
     resp.error_for_status()
-    // let status = resp.status();
-    // if status != StatusCode::OK {
-    //     let err = Box::from(format!("GET Error Code: {}", status.as_u16()));
-    //     return Err(err);
-    // }
-    // Ok(resp)
 }
 
 async fn crawl_page(url: String) -> Result<HashSet<String>, reqwest::Error> {
+    //! Function to crawl a single page.
+    //! Combines get_page() and get_links_from_html().
+    //! Uses blocking threadpool for extracting links.
+    //! TODO: Remove Coupling from crawl_host() so that it can be used independently.
     let page = get_page(&url).await?;
     let html = page.text().await?;
     let links =
@@ -28,19 +25,24 @@ async fn crawl_page(url: String) -> Result<HashSet<String>, reqwest::Error> {
     }
 }
 
-async fn crawl_host(origin_url: &str) -> Result<HashSet<String>, Box<dyn std::error::Error>> {
+async fn crawl_host(origin_url: String) -> Result<HashSet<String>, Box<dyn std::error::Error>> {
+    //! Crawls all links in the same host.
+    //! TODO: Fix copying links all over the place to reduce the memory usage.
     let mut visited = HashSet::new();
     let mut found_links = HashSet::new();
     let mut to_crawl = HashSet::new();
 
     to_crawl.insert(origin_url.to_string());
 
+    #[cfg(debug_assertions)]
     let mut count = 1;
 
     while !to_crawl.is_empty() {
-        println!("Pass: {}, Tasks: {}", count, to_crawl.len());
-        count += 1;
-
+        #[cfg(debug_assertions)]
+        {
+            println!("Pass: {}, Tasks: {}", count, to_crawl.len());
+            count += 1;
+        }
         let handles = to_crawl
             .iter()
             .map(|x| tokio::spawn(crawl_page(x.to_string())));
@@ -55,14 +57,15 @@ async fn crawl_host(origin_url: &str) -> Result<HashSet<String>, Box<dyn std::er
         visited.extend(to_crawl.clone());
         to_crawl = new_links
             .difference(&visited)
-            .filter(|x| comare_host(origin_url, x))
+            .filter(|x| compare_host(origin_url.as_str(), x))
             .map(|x| x.to_string())
             .collect();
     }
     Ok(found_links)
 }
 
-fn comare_host(original_url: &str, url: &str) -> bool {
+fn compare_host(original_url: &str, url: &str) -> bool {
+    //! Helper function to compare hosts.
     let original_url = Url::parse(original_url);
     let url = Url::parse(url);
     if let (Ok(url1), Ok(url2)) = (original_url, url) {
@@ -77,7 +80,6 @@ fn comare_host(original_url: &str, url: &str) -> bool {
 
 fn get_links_from_html(html: &str, url: &str) -> HashSet<String> {
     //! Function to extract all links from a given html string.
-    //! Pure function
     let url_parsed = Url::parse(url);
     match url_parsed {
         Ok(url) => Document::from(html)
@@ -93,7 +95,6 @@ fn normalize_url(url: &str, base_url: &Url) -> Option<String> {
     //! Helper function to parse url in a page.
     //! Converts relative urls to full urls.
     //! Also removes javascript urls and other false urls.
-    //! Pure Function
     if url.starts_with("#") {
         // Checks for internal links.
         // Maybe will make it optioanl to ignore them.
@@ -119,8 +120,9 @@ pub async fn temp() -> () {
     // let html = page.text().await.unwrap();
     // let links = get_links_from_html(&html, &url);
     // links.iter().for_each(|x| println!("{}", x.as_str()));
-    let origin_url = "https://crawler-test.com/";
-    let links = crawl_host(origin_url).await.unwrap();
+    let origin_url = "https://crawler-test.com/".to_string();
+    let local_url = "http://127.0.0.1:5500/index.html".to_string();
+    let links = crawl_host(local_url).await.unwrap();
     links.iter().for_each(|x| println!("{}", x));
 }
 
@@ -143,7 +145,7 @@ mod tests {
         let ans = gen_hasset(vec![
             "https://test.com/123.html",
             "https://test.com/home/123.html",
-            "https://test2.com",
+            "https://test2.com/",
         ]);
         assert_eq!(links, ans);
     }
