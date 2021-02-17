@@ -3,18 +3,20 @@ use crate::extractors::links;
 use futures::future;
 use reqwest::Url;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 pub async fn crawl_host(
     origin_url: String,
     crawl_depth: CrawlDepth,
-) -> Result<HashSet<String>, Box<dyn std::error::Error>> {
+) -> Result<HashSet<Arc<String>>, Box<dyn std::error::Error>> {
     //! Crawls all links in the same host.
     //! TODO: Fix copying links all over the place to reduce the memory usage.
-    let mut visited = HashSet::new();
-    let mut found_links = HashSet::new();
-    let mut to_crawl = HashSet::new();
+    let mut visited: HashSet<Arc<String>> = HashSet::new();
+    let mut found_links: HashSet<Arc<String>> = HashSet::new();
+    let mut to_crawl: HashSet<Arc<String>> = HashSet::new();
 
-    to_crawl.insert(origin_url.to_string());
+    let origin_url = Arc::new(origin_url);
+    to_crawl.insert(origin_url.clone());
 
     #[cfg(debug_assertions)]
     let mut count: usize = 1;
@@ -25,11 +27,9 @@ pub async fn crawl_host(
             println!("Pass: {}, Tasks: {}", count, to_crawl.len());
             count += 1;
         }
-        let handles = to_crawl
-            .iter()
-            .map(|x| tokio::spawn(crawl_page(x.to_string())));
+        let handles = to_crawl.iter().map(|x| tokio::spawn(crawl_page(x.clone())));
         let response = future::join_all(handles).await;
-        let new_links: HashSet<String> = response.iter().fold(HashSet::new(), |mut acc, x| {
+        let new_links: HashSet<Arc<String>> = response.iter().fold(HashSet::new(), |mut acc, x| {
             if let Ok(Ok(links)) = x {
                 acc.extend(links.clone());
             }
@@ -44,23 +44,22 @@ pub async fn crawl_host(
                 CrawlDepth::Variable(depth) => compare_depth(x, depth),
                 CrawlDepth::Domain => compare_host(origin_url.as_str(), x),
             })
-            .map(|x| x.to_string())
+            .cloned()
             .collect();
     }
     Ok(found_links)
 }
 
-async fn crawl_page(url: String) -> Result<HashSet<String>, reqwest::Error> {
+async fn crawl_page(url: Arc<String>) -> Result<HashSet<Arc<String>>, reqwest::Error> {
     //! Function to crawl a single page.
     //! Combines get_page() and get_links_from_html().
     //! Uses blocking threadpool for extracting links.
     //! TODO: Remove Coupling from crawl_host() so that it can be used independently.
     let page = get_page(&url).await?;
     let html = page.text().await?;
-    let links = tokio::task::spawn_blocking(move || {
-        links::get_links_from_html(html.as_str(), url.as_str())
-    })
-    .await;
+    let links =
+        tokio::task::spawn_blocking(move || links::get_links_from_html(html.as_str(), url.clone()))
+            .await;
     match links {
         Ok(links) => Ok(links),
         Err(_) => Ok(HashSet::new()),
