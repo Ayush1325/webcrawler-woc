@@ -11,3 +11,4 @@ a domain and url.
 - [[https://github.com/utkarshkukreti/select.rs][select]]
 * Resources
 - [[https://rolisz.ro/2020/03/01/web-crawler-in-rust/]]
+- https://crawler-test.com/

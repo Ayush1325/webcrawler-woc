@@ -1,13 +1,8 @@
+use crate::cli::CrawlDepth;
 use crate::extractors::links;
 use futures::future;
 use reqwest::Url;
 use std::collections::HashSet;
-
-pub enum CrawlDepth {
-    Zero,
-    Variable(usize),
-    Domain,
-}
 
 pub async fn crawl_host(
     origin_url: String,
@@ -45,7 +40,7 @@ pub async fn crawl_host(
         to_crawl = new_links
             .difference(&visited)
             .filter(|x| match crawl_depth {
-                CrawlDepth::Zero => false,
+                CrawlDepth::Page => false,
                 CrawlDepth::Variable(depth) => compare_depth(x, depth),
                 CrawlDepth::Domain => compare_host(origin_url.as_str(), x),
             })

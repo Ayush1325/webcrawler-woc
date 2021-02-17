@@ -1,13 +1,14 @@
-use std::time::Instant;
+mod cli;
 mod crawler;
 mod extractors;
 
 #[tokio::main]
 async fn main() {
-    let now = Instant::now();
-    println!("Started");
-    temp().await;
-    println!("Time: {}", now.elapsed().as_millis());
+    // let now = Instant::now();
+    // println!("Started");
+    // temp().await;
+    // println!("Time: {}", now.elapsed().as_millis());
+    cli::entry().await;
 }
 
 async fn temp() -> () {
@@ -18,7 +19,7 @@ async fn temp() -> () {
     // links.iter().for_each(|x| println!("{}", x.as_str()));
     let origin_url = "https://crawler-test.com/".to_string();
     // let local_url = "http://127.0.0.1:5500/index.html".to_string();
-    let links = crawler::crawl_host(origin_url, crawler::CrawlDepth::Variable(1))
+    let links = crawler::crawl_host(origin_url, cli::CrawlDepth::Variable(1))
         .await
         .unwrap();
     links.iter().for_each(|x| println!("{}", x));
