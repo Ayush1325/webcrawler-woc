@@ -4,6 +4,12 @@ use select::document::Document;
 use select::predicate::Name;
 use std::collections::HashSet;
 
+enum CrawlDepth {
+    Zero,
+    Variable(usize),
+    Domain,
+}
+
 async fn get_page(url: &str) -> Result<reqwest::Response, reqwest::Error> {
     //! Function to make get request to a single url.
     let resp = reqwest::get(url).await?;
@@ -25,7 +31,10 @@ async fn crawl_page(url: String) -> Result<HashSet<String>, reqwest::Error> {
     }
 }
 
-async fn crawl_host(origin_url: String) -> Result<HashSet<String>, Box<dyn std::error::Error>> {
+async fn crawl_host(
+    origin_url: String,
+    crawl_depth: CrawlDepth,
+) -> Result<HashSet<String>, Box<dyn std::error::Error>> {
     //! Crawls all links in the same host.
     //! TODO: Fix copying links all over the place to reduce the memory usage.
     let mut visited = HashSet::new();
@@ -35,7 +44,7 @@ async fn crawl_host(origin_url: String) -> Result<HashSet<String>, Box<dyn std::
     to_crawl.insert(origin_url.to_string());
 
     #[cfg(debug_assertions)]
-    let mut count = 1;
+    let mut count: usize = 1;
 
     while !to_crawl.is_empty() {
         #[cfg(debug_assertions)]
@@ -57,7 +66,11 @@ async fn crawl_host(origin_url: String) -> Result<HashSet<String>, Box<dyn std::
         visited.extend(to_crawl.clone());
         to_crawl = new_links
             .difference(&visited)
-            .filter(|x| compare_host(origin_url.as_str(), x))
+            .filter(|x| match crawl_depth {
+                CrawlDepth::Zero => false,
+                CrawlDepth::Variable(depth) => compare_depth(x, depth),
+                CrawlDepth::Domain => compare_host(origin_url.as_str(), x),
+            })
             .map(|x| x.to_string())
             .collect();
     }
@@ -71,6 +84,18 @@ fn compare_host(original_url: &str, url: &str) -> bool {
     if let (Ok(url1), Ok(url2)) = (original_url, url) {
         if let (Some(url1_host), Some(url2_host)) = (url1.host_str(), url2.host_str()) {
             if url1_host == url2_host {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn compare_depth(url: &str, depth: usize) -> bool {
+    let url = Url::parse(url);
+    if let Ok(parsed_url) = url {
+        if let Some(d) = parsed_url.path_segments() {
+            if d.count() <= depth {
                 return true;
             }
         }
@@ -121,9 +146,13 @@ pub async fn temp() -> () {
     // let links = get_links_from_html(&html, &url);
     // links.iter().for_each(|x| println!("{}", x.as_str()));
     let origin_url = "https://crawler-test.com/".to_string();
-    let local_url = "http://127.0.0.1:5500/index.html".to_string();
-    let links = crawl_host(local_url).await.unwrap();
+    // let local_url = "http://127.0.0.1:5500/index.html".to_string();
+    let links = crawl_host(origin_url, CrawlDepth::Variable(1))
+        .await
+        .unwrap();
     links.iter().for_each(|x| println!("{}", x));
+    // let url = Url::parse("https://www.wikipedia.org/home.html").unwrap();
+    // println!("{}", url.path_segments().unwrap().count());
 }
 
 #[cfg(test)]
