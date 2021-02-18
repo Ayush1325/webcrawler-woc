@@ -1,4 +1,3 @@
-use crate::cli::CrawlDepth;
 use crate::extractors::links;
 use futures::future;
 use reqwest::Url;
@@ -7,7 +6,8 @@ use std::sync::Arc;
 
 pub async fn crawl_host(
     origin_url: String,
-    crawl_depth: CrawlDepth,
+    crawl_depth: usize,
+    task_limit: usize,
 ) -> Result<HashSet<Arc<String>>, Box<dyn std::error::Error>> {
     //! Crawls all links in the same host.
     //! TODO: Fix copying links all over the place to reduce the memory usage.
@@ -27,7 +27,11 @@ pub async fn crawl_host(
             println!("Pass: {}, Tasks: {}", count, to_crawl.len());
             count += 1;
         }
-        let handles = to_crawl.iter().map(|x| tokio::spawn(crawl_page(x.clone())));
+        let to_crawl_part: HashSet<Arc<String>> =
+            to_crawl.iter().take(task_limit).cloned().collect();
+        let handles = to_crawl_part
+            .iter()
+            .map(|x| tokio::spawn(crawl_page(x.clone())));
         let response = future::join_all(handles).await;
         let new_links: HashSet<Arc<String>> = response.iter().fold(HashSet::new(), |mut acc, x| {
             if let Ok(Ok(links)) = x {
@@ -36,14 +40,13 @@ pub async fn crawl_host(
             acc
         });
         found_links.extend(new_links.clone());
-        visited.extend(to_crawl.clone());
+        visited.extend(to_crawl_part.clone());
         to_crawl = new_links
+            .union(&to_crawl)
+            .cloned()
+            .collect::<HashSet<Arc<String>>>()
             .difference(&visited)
-            .filter(|x| match crawl_depth {
-                CrawlDepth::Page => false,
-                CrawlDepth::Variable(depth) => compare_depth(x, depth),
-                CrawlDepth::Domain => compare_host(origin_url.as_str(), x),
-            })
+            .filter(|x| compare_depth(x, crawl_depth))
             .cloned()
             .collect();
     }

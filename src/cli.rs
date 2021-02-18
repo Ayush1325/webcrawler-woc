@@ -5,26 +5,10 @@ use std::time::Instant;
 #[clap(version = "1.0", author = "Ayush Singh <ayushsingh1325@gmail.com>")]
 struct CLI {
     url: String,
-    #[clap(short, long)]
-    depth: Option<usize>,
-}
-
-pub enum CrawlDepth {
-    Page,
-    Variable(usize),
-    Domain,
-}
-
-impl CrawlDepth {
-    fn from_option(depth: Option<usize>) -> Self {
-        match depth {
-            Some(x) => match x {
-                0 => CrawlDepth::Domain,
-                _ => CrawlDepth::Variable(x),
-            },
-            None => CrawlDepth::Page,
-        }
-    }
+    #[clap(short, long, default_value = "0")]
+    depth: usize,
+    #[clap(short, long, default_value = "1000")]
+    task_limit: usize,
 }
 
 pub async fn entry() {
@@ -32,7 +16,7 @@ pub async fn entry() {
     println!("Started");
     let opts = CLI::parse();
 
-    let links = crate::crawler::crawl_host(opts.url, CrawlDepth::from_option(opts.depth))
+    let links = crate::crawler::crawl_host(opts.url, opts.depth, std::cmp::max(opts.task_limit, 1))
         .await
         .unwrap();
     links.iter().for_each(|x| println!("{}", x));
