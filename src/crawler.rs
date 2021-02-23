@@ -1,25 +1,19 @@
 use crate::extractors::links;
 use futures::future;
-use std::collections::HashSet;
+use links::Link;
+use std::{collections::HashSet, sync::Arc};
 
 pub async fn crawl(
-    origin_url: String,
+    origin_url: Link,
     crawl_depth: Option<usize>,
-) -> Result<HashSet<links::Link>, String> {
-    let mut to_crawl: HashSet<links::Link> = HashSet::new();
-    let mut crawled: HashSet<links::Link> = HashSet::new();
-    let mut dont_crawl: HashSet<links::Link> = HashSet::new();
+    whitelist: Option<HashSet<String>>,
+    blacklist: Option<HashSet<String>>,
+) -> Result<HashSet<Link>, String> {
+    let mut to_crawl: HashSet<Link> = HashSet::new();
+    let mut crawled: HashSet<Link> = HashSet::new();
+    let mut dont_crawl: HashSet<Link> = HashSet::new();
 
-    let origin_url = match links::Link::new(&origin_url, None) {
-        Some(x) => x,
-        None => return Err("Invalid URL".to_string()),
-    };
     to_crawl.insert(origin_url.clone());
-
-    let origin_host = match origin_url.host {
-        Some(x) => x,
-        None => return Err("Invalid URL Host".to_string()),
-    };
 
     #[cfg(debug_assertions)]
     let mut count: usize = 1;
@@ -33,7 +27,6 @@ pub async fn crawl(
 
         let crawl_handler = to_crawl.iter().map(|x| crawl_page(&x));
         let temp_links = future::join_all(crawl_handler).await;
-        crawled.extend(temp_links.iter().map(|x| x.0.clone()));
         let temp_found_links =
             temp_links
                 .iter()
@@ -42,27 +35,37 @@ pub async fn crawl(
                     acc.extend(x);
                     acc
                 });
+
+        crawled.extend(temp_links.iter().map(|x| x.0.clone()));
+        dont_crawl.extend(
+            temp_found_links
+                .iter()
+                .filter(|x| !x.should_crawl(crawl_depth, &whitelist, &blacklist))
+                .cloned(),
+        );
         to_crawl = temp_found_links
-            .iter()
-            .filter(|x| x.should_crawl(crawl_depth, &origin_host))
+            .difference(&crawled)
             .cloned()
-            .collect::<HashSet<links::Link>>();
-        dont_crawl = temp_found_links
+            .collect::<HashSet<Link>>()
             .iter()
-            .filter(|x| !x.should_crawl(crawl_depth, &origin_host))
+            .filter(|x| x.should_crawl(crawl_depth, &whitelist, &blacklist))
             .cloned()
-            .collect();
+            .collect::<HashSet<Link>>();
     }
 
     Ok(crawled.union(&dont_crawl).cloned().collect())
 }
 
-pub async fn crawl_page(link: &links::Link) -> (links::Link, HashSet<links::Link>) {
+pub async fn crawl_page(link: &Link) -> (Link, HashSet<Link>) {
     let mut link = link.clone();
-    let response = match get_page(&link.url).await {
-        Ok(x) => x,
-        Err(_) => return (link, HashSet::new()),
+    let url_temp = link.url.clone();
+    let get_page_handler = tokio::spawn(get_page(url_temp)).await;
+    let response = if let Ok(Ok(x)) = get_page_handler {
+        x
+    } else {
+        return (link, HashSet::new());
     };
+
     link.update_from_response(&response);
     if link.check_html() {
         let html = match response.text().await {
@@ -80,8 +83,8 @@ pub async fn crawl_page(link: &links::Link) -> (links::Link, HashSet<links::Link
     (link, HashSet::new())
 }
 
-pub async fn get_page(url: &str) -> Result<reqwest::Response, reqwest::Error> {
+pub async fn get_page(url: Arc<String>) -> Result<reqwest::Response, reqwest::Error> {
     //! Function to make get request to a single url.
-    let resp = reqwest::get(url).await?;
+    let resp = reqwest::get(url.as_str()).await?;
     resp.error_for_status()
 }

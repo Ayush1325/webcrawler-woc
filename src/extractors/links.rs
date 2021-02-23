@@ -3,21 +3,20 @@ use reqwest::Url;
 use select::document::Document;
 use select::predicate::Name;
 use std::hash::Hasher;
-use std::{collections::HashSet, hash::Hash};
+use std::{collections::HashSet, hash::Hash, sync::Arc};
 
 #[derive(Clone, Debug)]
 pub struct Link {
-    pub url: String,
+    pub url: Arc<String>,
     pub host: Option<String>,
     depth: Option<usize>,
-    found_at: HashSet<String>,
     content_type: Option<Mime>,
     headers: Option<reqwest::header::HeaderMap>,
     pub crawled: bool,
 }
 
 impl Link {
-    pub fn new(url: &str, found_at: Option<&str>) -> Option<Self> {
+    pub fn new(url: &str) -> Option<Self> {
         let parsed_url = match Url::parse(url) {
             Ok(x) => x,
             Err(_) => return None,
@@ -26,19 +25,10 @@ impl Link {
             Some(x) => Some(x.to_string()),
             None => None,
         };
-        let depth = match parsed_url.path_segments() {
-            Some(x) => Some(x.count()),
-            None => None,
-        };
-        let mut temp = HashSet::new();
-        if let Some(x) = found_at {
-            temp.insert(x.to_string());
-        }
         Some(Link {
-            url: url.to_string(),
+            url: Arc::new(url.to_string()),
             host,
-            depth,
-            found_at: temp,
+            depth: Self::get_depth(&parsed_url),
             content_type: None,
             headers: None,
             crawled: false,
@@ -51,7 +41,7 @@ impl Link {
             Err(_) => return None,
         };
         match base_url_parsed.join(url) {
-            Ok(x) => Self::new(x.as_str(), Some(base_url)),
+            Ok(x) => Self::new(x.as_str()),
             Err(_) => None,
         }
     }
@@ -61,35 +51,48 @@ impl Link {
             Some(x) => Some(x.to_string()),
             None => None,
         };
-        let depth = match response.url().path_segments() {
-            Some(x) => Some(x.count()),
-            None => None,
-        };
         Some(Link {
-            url: response.url().to_string(),
+            url: Arc::new(response.url().to_string()),
             host,
-            depth,
-            found_at: HashSet::new(),
+            depth: Self::get_depth(response.url()),
             content_type: Self::get_mime(response.headers()),
             headers: Some(response.headers().to_owned()),
             crawled: true,
         })
     }
 
-    pub fn should_crawl(&self, depth: Option<usize>, required_host: &str) -> bool {
+    fn get_depth(url: &Url) -> Option<usize> {
+        match url.path_segments() {
+            Some(x) => Some(x.count()),
+            None => None,
+        }
+    }
+
+    pub fn should_crawl(
+        &self,
+        depth: Option<usize>,
+        whitelist_host: &Option<HashSet<String>>,
+        blacklist_host: &Option<HashSet<String>>,
+    ) -> bool {
+        if let Some(x) = whitelist_host {
+            return self.check_host(x, false);
+        }
+        if let Some(x) = blacklist_host {
+            return !self.check_host(x, true);
+        }
         match depth {
             Some(x) => match self.depth {
                 Some(y) => y <= x,
                 None => false,
             },
-            None => Self::check_host(self, required_host),
+            None => false,
         }
     }
 
-    fn check_host(&self, required_host: &str) -> bool {
+    fn check_host(&self, required_host: &HashSet<String>, default: bool) -> bool {
         match &self.host {
-            Some(x) => x.as_str() == required_host,
-            None => false,
+            Some(x) => required_host.contains(x),
+            None => default,
         }
     }
 
@@ -138,7 +141,7 @@ impl Hash for Link {
     }
 }
 
-pub fn get_links_from_html(html: &str, url: String) -> HashSet<Link> {
+pub fn get_links_from_html(html: &str, url: Arc<String>) -> HashSet<Link> {
     //! Function to extract all links from a given html string.
     let url_parsed = Url::parse(&url);
     match url_parsed {
@@ -161,7 +164,7 @@ fn normalize_url(url: &str, base_url: &str) -> Option<Link> {
         return None;
     }
 
-    match Link::new(url, None) {
+    match Link::new(url) {
         Some(x) => Some(x),
         None => Link::new_relative(url, base_url),
     }
