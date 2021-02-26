@@ -2,15 +2,24 @@ use mime::Mime;
 use reqwest::Url;
 use select::document::Document;
 use select::predicate::Name;
+use serde::{Deserialize, Serialize};
 use std::hash::Hasher;
 use std::{collections::HashSet, hash::Hash, sync::Arc};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Link {
     pub url: Arc<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub host: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     depth: Option<usize>,
+    #[serde(default, with = "opt_mime", skip_serializing_if = "Option::is_none")]
     content_type: Option<Mime>,
+    #[serde(
+        default,
+        with = "opt_headermap",
+        skip_serializing_if = "Option::is_none"
+    )]
     headers: Option<reqwest::header::HeaderMap>,
     pub crawled: bool,
 }
@@ -46,21 +55,6 @@ impl Link {
         }
     }
 
-    pub fn from_response(response: &reqwest::Response) -> Option<Self> {
-        let host = match response.url().host_str() {
-            Some(x) => Some(x.to_string()),
-            None => None,
-        };
-        Some(Link {
-            url: Arc::new(response.url().to_string()),
-            host,
-            depth: Self::get_depth(response.url()),
-            content_type: Self::get_mime(response.headers()),
-            headers: Some(response.headers().to_owned()),
-            crawled: true,
-        })
-    }
-
     fn get_depth(url: &Url) -> Option<usize> {
         match url.path_segments() {
             Some(x) => Some(x.count()),
@@ -85,7 +79,7 @@ impl Link {
                 Some(y) => y <= x,
                 None => false,
             },
-            None => false,
+            None => true,
         }
     }
 
@@ -138,6 +132,56 @@ impl Eq for Link {}
 impl Hash for Link {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.url.hash(state);
+    }
+}
+
+mod opt_mime {
+    use mime::Mime;
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &Option<Mime>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(x) => hyper_serde::serialize(x, serializer),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<Mime>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match hyper_serde::deserialize(deserializer) {
+            Ok(x) => Ok(Some(x)),
+            Err(_) => Ok(None),
+        }
+    }
+}
+
+mod opt_headermap {
+    use reqwest::header::HeaderMap;
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize<S>(value: &Option<HeaderMap>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match value {
+            Some(x) => http_serde::header_map::serialize(x, serializer),
+            None => serializer.serialize_none(),
+        }
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<HeaderMap>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        match http_serde::header_map::deserialize(deserializer) {
+            Ok(x) => Ok(Some(x)),
+            Err(_) => Ok(None),
+        }
     }
 }
 

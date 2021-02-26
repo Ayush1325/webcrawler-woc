@@ -2,16 +2,18 @@ use crate::extractors::links;
 use futures::future;
 use links::Link;
 use std::{collections::HashSet, sync::Arc};
+use tokio::sync::mpsc;
 
 pub async fn crawl(
     origin_url: Link,
     crawl_depth: Option<usize>,
     whitelist: Option<HashSet<String>>,
     blacklist: Option<HashSet<String>>,
-) -> Result<HashSet<Link>, String> {
+    tx: mpsc::UnboundedSender<Link>,
+) {
     let mut to_crawl: HashSet<Link> = HashSet::new();
-    let mut crawled: HashSet<Link> = HashSet::new();
-    let mut dont_crawl: HashSet<Link> = HashSet::new();
+    let mut crawled: HashSet<Arc<String>> = HashSet::new();
+    let mut dont_crawl: HashSet<Arc<String>> = HashSet::new();
 
     to_crawl.insert(origin_url.clone());
 
@@ -36,24 +38,33 @@ pub async fn crawl(
                     acc
                 });
 
-        crawled.extend(temp_links.iter().map(|x| x.0.clone()));
+        temp_links.iter().for_each(|x| {
+            tx.send(x.0.clone());
+        });
+        crawled.extend(temp_links.iter().map(|x| x.0.url.clone()));
+
+        temp_found_links
+            .iter()
+            .filter(|x| !x.should_crawl(crawl_depth, &whitelist, &blacklist))
+            .filter(|x| !dont_crawl.contains(&x.url))
+            .for_each(|x| {
+                tx.send(x.clone());
+            });
+
         dont_crawl.extend(
             temp_found_links
                 .iter()
                 .filter(|x| !x.should_crawl(crawl_depth, &whitelist, &blacklist))
-                .cloned(),
+                .map(|x| x.url.clone()),
         );
+
         to_crawl = temp_found_links
-            .difference(&crawled)
-            .cloned()
-            .collect::<HashSet<Link>>()
             .iter()
             .filter(|x| x.should_crawl(crawl_depth, &whitelist, &blacklist))
+            .filter(|x| !crawled.contains(&x.url))
             .cloned()
             .collect::<HashSet<Link>>();
     }
-
-    Ok(crawled.union(&dont_crawl).cloned().collect())
 }
 
 pub async fn crawl_page(link: &Link) -> (Link, HashSet<Link>) {

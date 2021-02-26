@@ -13,3 +13,7 @@ tokio = { version = "1", features = ["full"] }
 futures = "0.3"
 clap = "3.0.0-beta.2"
 mime = "0.3.16"
+serde = { version = "1", features = ["derive", "rc"]}
+serde_json = "1.0"
+hyper_serde = "0.11.1"
+http-serde = "1.0.1"
