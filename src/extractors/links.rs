@@ -187,6 +187,8 @@ mod opt_headermap {
 
 pub fn get_links_from_html(html: &str, url: Arc<String>) -> HashSet<Link> {
     //! Function to extract all links from a given html string.
+    //! TODO: Convert to an adapter
+    //! TODO: Maybe Return Hashset<String> instead of HashSet<Link>
     let url_parsed = Url::parse(&url);
     match url_parsed {
         Ok(url) => Document::from(html)
