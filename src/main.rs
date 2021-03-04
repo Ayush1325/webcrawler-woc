@@ -6,25 +6,36 @@ mod file_handler;
 #[tokio::main]
 async fn main() {
     cli::entry().await;
-    //test().await;
+    // test().await;
 }
 
-// #[cfg(debug_assertions)]
-// async fn test() {
-//     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-//     let file_path =
-//         std::path::PathBuf::from(r"/home/ayush/Documents/Programming/Projects/WOC/temp.json");
-//     let tx2 = tx.clone();
-//     tokio::spawn(async move {
-//         let link =
-//             extractors::links::Link::new("https://tokio.rs/tokio/tutorial/channels").unwrap();
-//         tx.send(link).unwrap();
-//     });
+#[cfg(debug_assertions)]
+async fn test() {
+    use reqwest::Url;
+    use std::time::Instant;
 
-//     tokio::spawn(async move {
-//         let link = extractors::links::Link::new("https://serde.rs/impl-serialize.html").unwrap();
-//         tx2.send(link).unwrap();
-//     });
+    let url1 = Url::parse("https://crawler-test.com").unwrap();
+    let url2 = Url::parse("http://crawler-test.com/").unwrap();
+    let t = 100000000;
 
-//     tokio::spawn(file_handler::write_links(file_path, rx)).await;
-// }
+    let start_time = Instant::now();
+    for _ in 0..t {
+        let _ = url1 == url2;
+    }
+    println!(
+        "Time Taken: {} milli seconds",
+        start_time.elapsed().as_millis()
+    );
+
+    let url1 = "https://crawler-test.com".to_string();
+    let url2 = "http://crawler-test.com/".to_string();
+
+    let start_time = Instant::now();
+    for _ in 0..t {
+        let _ = url1 == url2;
+    }
+    println!(
+        "Time Taken: {} milli seconds",
+        start_time.elapsed().as_millis()
+    );
+}

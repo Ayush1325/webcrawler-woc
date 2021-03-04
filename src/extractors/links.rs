@@ -1,14 +1,14 @@
+use futures::{stream, StreamExt};
 use mime::Mime;
 use reqwest::Url;
-use select::document::Document;
-use select::predicate::Name;
+use select::{document::Document, predicate::Name};
 use serde::{Deserialize, Serialize};
-use std::hash::Hasher;
-use std::{collections::HashSet, hash::Hash, sync::Arc};
+use std::{collections::HashSet, hash::Hash, hash::Hasher};
+use tokio::sync::mpsc;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Link {
-    pub url: Arc<String>,
+    pub url: Url,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub host: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -34,14 +34,29 @@ impl Link {
             Some(x) => Some(x.to_string()),
             None => None,
         };
+        let depth = Self::get_depth(&parsed_url);
         Some(Link {
-            url: Arc::new(url.to_string()),
+            url: parsed_url,
             host,
-            depth: Self::get_depth(&parsed_url),
+            depth,
             content_type: None,
             headers: None,
             crawled: false,
         })
+    }
+
+    pub fn from_response(url: &reqwest::Response) -> Self {
+        Link {
+            url: url.url().to_owned(),
+            host: match url.url().host_str() {
+                Some(x) => Some(x.to_string()),
+                None => None,
+            },
+            depth: Self::get_depth(url.url()),
+            content_type: Self::get_mime(url.headers()),
+            headers: Some(url.headers().to_owned()),
+            crawled: true,
+        }
     }
 
     pub fn new_relative(url: &str, base_url: &str) -> Option<Self> {
@@ -64,23 +79,27 @@ impl Link {
 
     pub fn should_crawl(
         &self,
-        depth: Option<usize>,
+        depth: &Option<usize>,
         whitelist_host: &Option<HashSet<String>>,
         blacklist_host: &Option<HashSet<String>>,
     ) -> bool {
+        if let Some(x) = depth {
+            match self.depth {
+                Some(y) => {
+                    if y > *x {
+                        return false;
+                    }
+                }
+                None => return false,
+            };
+        }
         if let Some(x) = whitelist_host {
             return self.check_host(x, false);
         }
         if let Some(x) = blacklist_host {
             return !self.check_host(x, true);
         }
-        match depth {
-            Some(x) => match self.depth {
-                Some(y) => y <= x,
-                None => false,
-            },
-            None => true,
-        }
+        false
     }
 
     fn check_host(&self, required_host: &HashSet<String>, default: bool) -> bool {
@@ -185,22 +204,21 @@ mod opt_headermap {
     }
 }
 
-pub fn get_links_from_html(html: &str, url: Arc<String>) -> HashSet<Link> {
-    //! Function to extract all links from a given html string.
-    //! TODO: Convert to an adapter
-    //! TODO: Maybe Return Hashset<String> instead of HashSet<Link>
-    let url_parsed = Url::parse(&url);
-    match url_parsed {
-        Ok(url) => Document::from(html)
-            .find(Name("a"))
-            .filter_map(|n| n.attr("href"))
-            .filter_map(|x| normalize_url(x, url.as_str()))
-            .collect::<HashSet<Link>>(),
-        Err(_) => HashSet::new(),
-    }
+pub async fn get_links_from_html(html: &str, url: &str, tx: &mpsc::Sender<Link>) {
+    let temp = Document::from(html)
+        .find(Name("a"))
+        .filter_map(|x| x.attr("href"))
+        .map(|x| x.to_string())
+        .collect::<HashSet<String>>();
+    stream::iter(temp)
+        .filter_map(|x| async move { normalize_url(x, url) })
+        .for_each_concurrent(None, |x| async move {
+            tx.send(x).await;
+        })
+        .await;
 }
 
-fn normalize_url(url: &str, base_url: &str) -> Option<Link> {
+fn normalize_url(url: String, base_url: &str) -> Option<Link> {
     //! Helper function to parse url in a page.
     //! Converts relative urls to full urls.
     //! Also removes javascript urls and other false urls.
@@ -210,33 +228,8 @@ fn normalize_url(url: &str, base_url: &str) -> Option<Link> {
         return None;
     }
 
-    match Link::new(url) {
+    match Link::new(&url) {
         Some(x) => Some(x),
-        None => Link::new_relative(url, base_url),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn gen_hasset(arr: Vec<&str>) -> HashSet<Arc<String>> {
-        arr.iter().map(|x| Arc::new(x.to_string())).collect()
-    }
-
-    #[test]
-    fn simple_html() {
-        let html = "<a href='/123.html'></a>
-                    <a href='#1'></a>
-                    <a href='123.html'></a>
-                    <a href='https://test2.com'></a>";
-        let url = Arc::new("https://test.com/home/".to_string());
-        let links = get_links_from_html(html, url);
-        let ans = gen_hasset(vec![
-            "https://test.com/123.html",
-            "https://test.com/home/123.html",
-            "https://test2.com/",
-        ]);
-        assert_eq!(links, ans);
+        None => Link::new_relative(&url, base_url),
     }
 }

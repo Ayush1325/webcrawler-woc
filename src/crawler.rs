@@ -1,7 +1,8 @@
 use crate::extractors::links;
 use futures::{stream, StreamExt};
 use links::Link;
-use std::{collections::HashSet, sync::Arc};
+use reqwest::Url;
+use std::collections::HashSet;
 use tokio::sync::mpsc;
 
 pub async fn crawl(
@@ -9,99 +10,78 @@ pub async fn crawl(
     crawl_depth: Option<usize>,
     whitelist: Option<HashSet<String>>,
     blacklist: Option<HashSet<String>>,
-    tx: mpsc::UnboundedSender<Link>,
+    tx_output: mpsc::UnboundedSender<Link>,
     task_limit: usize,
 ) {
-    let mut to_crawl: HashSet<Link> = HashSet::new();
-    let mut crawled: HashSet<Arc<String>> = HashSet::new();
-    let mut dont_crawl: HashSet<Arc<String>> = HashSet::new();
+    //! Bug: https://crawler-test.com and http://crawler-test.com are being crawled every single time.
+    let mut to_crawl: HashSet<Url> = HashSet::new();
+    let mut crawled: HashSet<Url> = HashSet::new();
+    let mut dont_crawl: HashSet<Url> = HashSet::new();
     let client = reqwest::Client::new();
 
-    to_crawl.insert(origin_url.clone());
-
-    #[cfg(debug_assertions)]
-    let mut count: usize = 1;
+    to_crawl.insert(origin_url.url);
 
     while !to_crawl.is_empty() {
-        #[cfg(debug_assertions)]
-        {
-            println!("Pass: {}, Tasks: {}", count, to_crawl.len());
-            count += 1;
-        }
+        println!("Crawling {} URls", to_crawl.len());
 
-        let mut crawls = stream::iter(to_crawl.clone())
-            .map(|x| {
-                let c = client.clone();
-                tokio::spawn(async move { crawl_page(x, c).await })
+        let (tx_cralwer, mut rx_crawler) = mpsc::channel::<Link>(task_limit);
+
+        stream::iter(to_crawl.clone())
+            .for_each_concurrent(task_limit, |x| async {
+                let tx_clone = tx_cralwer.clone();
+                let client_clone = client.clone();
+                tokio::spawn(async move { crawl_page(x, client_clone, tx_clone).await });
             })
-            .buffer_unordered(task_limit);
+            .await;
 
         to_crawl.clear();
 
-        while let Some(x) = crawls.next().await {
-            if let Ok((link, found_links)) = x {
+        drop(tx_cralwer);
+
+        while let Some(link) = rx_crawler.recv().await {
+            if link.crawled {
                 crawled.insert(link.url.clone());
-                tx.send(link.clone());
-
-                dont_crawl.extend(
-                    found_links
-                        .iter()
-                        .filter(|x| !x.should_crawl(crawl_depth, &whitelist, &blacklist))
-                        .map(|x| x.url.clone()),
-                );
-                found_links
-                    .iter()
-                    .filter(|x| !x.should_crawl(crawl_depth, &whitelist, &blacklist))
-                    .filter(|x| !dont_crawl.contains(&x.url))
-                    .for_each(|x| {
-                        tx.send(x.clone());
-                    });
-
-                to_crawl.extend(
-                    found_links
-                        .iter()
-                        .filter(|x| x.should_crawl(crawl_depth, &whitelist, &blacklist))
-                        .filter(|x| !crawled.contains(&x.url))
-                        .cloned()
-                        .collect::<HashSet<Link>>(),
-                );
+                if let Err(_) = tx_output.send(link) {
+                    return;
+                }
+            } else {
+                let should_crawl = link.should_crawl(&crawl_depth, &whitelist, &blacklist);
+                if should_crawl && !crawled.contains(&link.url) {
+                    to_crawl.insert(link.url);
+                } else if !should_crawl && !dont_crawl.contains(&link.url) {
+                    dont_crawl.insert(link.url.clone());
+                    if let Err(_) = tx_output.send(link) {
+                        return;
+                    }
+                }
             }
         }
     }
 }
 
-pub async fn crawl_page(link: Link, client: reqwest::Client) -> (Link, HashSet<Link>) {
-    //! TODO: Maybe Return HashSet<String> instead of HashSet<Link>
-    let mut link = link.clone();
-    let url_temp = link.url.clone();
-    let get_page_handler = get_page(url_temp, &client).await;
-    let response = match get_page_handler {
+pub async fn crawl_page(url: Url, client: reqwest::Client, tx: mpsc::Sender<Link>) {
+    let resp = match get_page(url.as_str(), &client).await {
         Ok(x) => x,
-        Err(_) => return (link, HashSet::new()),
+        Err(_) => return,
     };
-
-    link.update_from_response(&response);
-    if link.check_html() {
-        let html = match response.text().await {
-            Ok(x) => x,
-            Err(_) => return (link, HashSet::new()),
-        };
-        let url_clone = link.url.clone();
-        let links =
-            tokio::task::spawn_blocking(move || links::get_links_from_html(&html, url_clone)).await;
-        return match links {
-            Ok(x) => (link, x),
-            Err(_) => (link, HashSet::new()),
-        };
+    let link = links::Link::from_response(&resp);
+    let is_html = link.check_html();
+    if let Err(_) = tx.send(link).await {
+        return;
     }
-    (link, HashSet::new())
+    if is_html {
+        let html = match resp.text().await {
+            Ok(x) => x,
+            Err(_) => return,
+        };
+        links::get_links_from_html(&html, url.as_str(), &tx).await;
+    }
 }
 
 pub async fn get_page(
-    url: Arc<String>,
+    url: &str,
     client: &reqwest::Client,
 ) -> Result<reqwest::Response, reqwest::Error> {
-    //! Function to make get request to a single url.
-    let resp = client.get(url.as_str()).send().await?;
+    let resp = client.get(url).send().await?;
     resp.error_for_status()
 }

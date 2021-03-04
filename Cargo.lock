@@ -1403,6 +1403,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "robotstxt"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbc52377db80e3fec3a2c748ca603b8b6cacdd34ff89ff4b742a635361d4b4a7"
+
+[[package]]
 name = "rustc_version"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1833,17 +1839,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-stream"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1981ad97df782ab506a1f43bf82c967326960d278acf3bf8279809648c3ff3ea"
-dependencies = [
- "futures-core",
- "pin-project-lite",
- "tokio 1.2.0",
-]
-
-[[package]]
 name = "tokio-sync"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2004,6 +1999,7 @@ dependencies = [
  "idna",
  "matches",
  "percent-encoding",
+ "serde",
 ]
 
 [[package]]
@@ -2151,11 +2147,12 @@ dependencies = [
  "hyper_serde",
  "mime",
  "reqwest",
+ "robotstxt",
  "select",
  "serde",
  "serde_json",
  "tokio 1.2.0",
- "tokio-stream",
+ "url",
 ]
 
 [[package]]

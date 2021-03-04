@@ -1,0 +1,20 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "type": "lldb",
+        "request": "launch",
+        "name": "Launch",
+        "program": "${workspaceRoot}/target/debug/webcrawler",
+        "args": ["https://crawler-test.com/", "-d", "1"],
+        "cwd": "${workspaceFolder}",
+        "stopOnEntry": false,
+        "sourceLanguages": [
+          "rust"
+        ],
+        "sourceMap": {
+          "/rustc/*": "${env:HOME}/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust"
+        }
+      }
+    ]
+  }

@@ -5,14 +5,15 @@
 like external links, mails, etc. Like a web crawler used by search engines but specific for
 a domain and url.
 - It is a project for WOC.
-* TODO
-- [ ] [[https://developers.google.com/search/docs/advanced/sitemaps/overview][Sitemaps]]
-- [ ] [[https://github.com/saresend/selenium-rs][Selenium]]
 * Tech Stack
 - [[https://www.rust-lang.org/][Rust]]
 - [[https://github.com/seanmonstar/reqwest][reqwest]]
 - [[https://github.com/utkarshkukreti/select.rs][select]]
 - [[https://github.com/clap-rs/clap][clap]]
+- [[https://tokio.rs/][Tokio]]
+- [[https://docs.rs/futures/0.3.13/futures/][Futures]]
+- [[https://serde.rs/][Serde]]
+- [[https://docs.rs/mime/0.3.16/mime/][Mime]]
 * Resources
 - [[https://rolisz.ro/2020/03/01/web-crawler-in-rust/]]
 - https://crawler-test.com/
