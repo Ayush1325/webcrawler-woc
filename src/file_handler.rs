@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
-use tokio::sync::mpsc::UnboundedReceiver;
+use tokio::sync::mpsc::Receiver;
 
 pub fn read_urls(file_path: PathBuf) -> Result<HashSet<String>, std::io::Error> {
     use std::fs::File;
@@ -20,7 +20,7 @@ pub fn read_urls(file_path: PathBuf) -> Result<HashSet<String>, std::io::Error> 
 
 pub async fn write_links(
     file_path: PathBuf,
-    mut rx: UnboundedReceiver<crate::extractors::links::Link>,
+    mut rx: Receiver<crate::extractors::links::Link>,
 ) -> Result<(), std::io::Error> {
     use tokio::fs::File;
     use tokio::io::{AsyncWriteExt, BufWriter};

@@ -9,18 +9,13 @@ use tokio::sync::mpsc;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Link {
     pub url: Url,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(skip)]
     pub host: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    depth: Option<usize>,
-    #[serde(default, with = "opt_mime", skip_serializing_if = "Option::is_none")]
+    #[serde(with = "opt_mime", skip_serializing_if = "Option::is_none")]
     content_type: Option<Mime>,
-    #[serde(
-        default,
-        with = "opt_headermap",
-        skip_serializing_if = "Option::is_none"
-    )]
+    #[serde(with = "opt_headermap", skip_serializing_if = "Option::is_none")]
     headers: Option<reqwest::header::HeaderMap>,
+    #[serde(skip)]
     pub crawled: bool,
 }
 
@@ -34,15 +29,26 @@ impl Link {
             Some(x) => Some(x.to_string()),
             None => None,
         };
-        let depth = Self::get_depth(&parsed_url);
         Some(Link {
             url: parsed_url,
             host,
-            depth,
             content_type: None,
             headers: None,
             crawled: false,
         })
+    }
+
+    pub fn from_url(url: &Url) -> Self {
+        Link {
+            url: url.clone(),
+            host: match url.host_str() {
+                Some(x) => Some(x.to_string()),
+                None => None,
+            },
+            content_type: None,
+            headers: None,
+            crawled: false,
+        }
     }
 
     pub fn from_response(url: &reqwest::Response) -> Self {
@@ -52,7 +58,6 @@ impl Link {
                 Some(x) => Some(x.to_string()),
                 None => None,
             },
-            depth: Self::get_depth(url.url()),
             content_type: Self::get_mime(url.headers()),
             headers: Some(url.headers().to_owned()),
             crawled: true,
@@ -79,20 +84,9 @@ impl Link {
 
     pub fn should_crawl(
         &self,
-        depth: &Option<usize>,
         whitelist_host: &Option<HashSet<String>>,
         blacklist_host: &Option<HashSet<String>>,
     ) -> bool {
-        if let Some(x) = depth {
-            match self.depth {
-                Some(y) => {
-                    if y > *x {
-                        return false;
-                    }
-                }
-                None => return false,
-            };
-        }
         if let Some(x) = whitelist_host {
             return self.check_host(x, false);
         }
@@ -204,7 +198,7 @@ mod opt_headermap {
     }
 }
 
-pub async fn get_links_from_html(html: &str, url: &str, tx: &mpsc::Sender<Link>) {
+pub async fn get_links_from_html(html: &str, url: &str, tx: &mpsc::Sender<Link>, limit: usize) {
     let temp = Document::from(html)
         .find(Name("a"))
         .filter_map(|x| x.attr("href"))
@@ -212,7 +206,7 @@ pub async fn get_links_from_html(html: &str, url: &str, tx: &mpsc::Sender<Link>)
         .collect::<HashSet<String>>();
     stream::iter(temp)
         .filter_map(|x| async move { normalize_url(x, url) })
-        .for_each_concurrent(None, |x| async move {
+        .for_each_concurrent(limit, |x| async move {
             tx.send(x).await;
         })
         .await;
