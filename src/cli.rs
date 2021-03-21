@@ -1,7 +1,7 @@
 use crate::extractors::links::Link;
 use crate::file_handler;
 use clap::Clap;
-use std::{collections::HashSet, path::PathBuf, time::Instant};
+use std::{path::PathBuf, time::Instant};
 use tokio::sync::mpsc;
 
 #[derive(Clap)]
@@ -29,7 +29,14 @@ pub async fn entry() {
     let (tx, rx) = mpsc::channel(opts.task_limit);
 
     let output_handler = handle_output(opts.output, opts.verbose, rx, opts.task_limit);
-    let crawler_handler = launch_crawler(opts.url, opts.depth, opts.task_limit, tx);
+    let crawler_handler = launch_crawler(
+        opts.url,
+        opts.depth,
+        opts.task_limit,
+        tx,
+        opts.whitelist,
+        opts.blacklist,
+    );
 
     let returns = futures::future::try_join(output_handler, crawler_handler).await;
 
@@ -45,19 +52,36 @@ async fn launch_crawler(
     depth: Option<usize>,
     task_limit: usize,
     tx: mpsc::Sender<Link>,
+    whitelist: Option<PathBuf>,
+    blacklist: Option<PathBuf>,
 ) -> Result<(), String> {
     let origin_url = match Link::new(origin_url.as_str()) {
         Some(x) => x,
         None => return Err("Invalid Url".to_string()),
     };
 
+    let whitelist = match whitelist {
+        Some(x) => match file_handler::read_hosts(x).await {
+            Ok(y) => Some(y),
+            Err(err) => return Err(err.to_string()),
+        },
+        None => None,
+    };
+
+    let blacklist = match blacklist {
+        Some(x) => match file_handler::read_hosts(x).await {
+            Ok(y) => Some(y),
+            Err(err) => return Err(err.to_string()),
+        },
+        None => None,
+    };
+
     let handler = match depth {
         None => tokio::spawn(async move {
-            crate::crawler::crawl_no_depth(origin_url, temp_whitellist(), None, tx, task_limit)
-                .await
+            crate::crawler::crawl_no_depth(origin_url, whitelist, blacklist, tx, task_limit).await
         }),
         Some(x) => tokio::spawn(async move {
-            crate::crawler::crawl_with_depth(origin_url, x, temp_whitellist(), None, tx, task_limit)
+            crate::crawler::crawl_with_depth(origin_url, x, whitelist, blacklist, tx, task_limit)
                 .await
         }),
     };
@@ -65,12 +89,6 @@ async fn launch_crawler(
         Ok(_) => Ok(()),
         Err(_) => Err("Something went wrong in the Crawler".to_string()),
     }
-}
-
-fn temp_whitellist() -> Option<HashSet<String>> {
-    let mut temp = HashSet::new();
-    temp.insert("crawler-test.com".to_string());
-    Some(temp)
 }
 
 async fn handle_output(

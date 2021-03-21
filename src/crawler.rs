@@ -8,8 +8,8 @@ use tokio::sync::mpsc;
 pub async fn crawl_with_depth(
     origin_url: Link,
     crawl_depth: usize,
-    whitelist: Option<HashSet<String>>,
-    blacklist: Option<HashSet<String>>,
+    whitelist: Option<HashSet<url::Host>>,
+    blacklist: Option<HashSet<url::Host>>,
     tx_output: mpsc::Sender<Link>,
     task_limit: usize,
 ) {
@@ -69,8 +69,8 @@ pub async fn crawl_with_depth(
 
 pub async fn crawl_no_depth(
     origin_url: Link,
-    whitelist: Option<HashSet<String>>,
-    blacklist: Option<HashSet<String>>,
+    whitelist: Option<HashSet<url::Host>>,
+    blacklist: Option<HashSet<url::Host>>,
     tx_output: mpsc::Sender<Link>,
     task_limit: usize,
 ) {

@@ -11,7 +11,8 @@ async fn main() {
 
 #[cfg(debug_assertions)]
 async fn test() {
-    use mime::Mime;
-    let m = "text/plain".parse::<Mime>().unwrap();
-    println!("{}", m == mime::TEXT_PLAIN);
+    use std::path::PathBuf;
+
+    let p = PathBuf::from("/home/ayush/Documents/Programming/Projects/WOC/whitelist.txt");
+    println!("{:#?}", file_handler::read_hosts(p).await.unwrap());
 }

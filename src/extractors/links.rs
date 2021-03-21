@@ -8,7 +8,7 @@ use std::{collections::HashSet, hash::Hash, hash::Hasher};
 pub struct Link {
     pub url: Url,
     #[serde(skip)]
-    pub host: Option<String>,
+    pub host: Option<url::Host>,
     #[serde(with = "opt_mime", skip_serializing_if = "Option::is_none")]
     pub content_type: Option<Mime>,
     #[serde(with = "opt_headermap", skip_serializing_if = "Option::is_none")]
@@ -23,8 +23,8 @@ impl Link {
             Ok(x) => x,
             Err(_) => return None,
         };
-        let host = match parsed_url.host_str() {
-            Some(x) => Some(x.to_string()),
+        let host = match parsed_url.host() {
+            Some(x) => Some(x.to_owned()),
             None => None,
         };
         Some(Link {
@@ -39,8 +39,8 @@ impl Link {
     pub fn from_url(url: &Url) -> Self {
         Link {
             url: url.clone(),
-            host: match url.host_str() {
-                Some(x) => Some(x.to_string()),
+            host: match url.host() {
+                Some(x) => Some(x.to_owned()),
                 None => None,
             },
             content_type: None,
@@ -49,18 +49,18 @@ impl Link {
         }
     }
 
-    pub fn from_response(url: &reqwest::Response) -> Self {
-        Link {
-            url: url.url().to_owned(),
-            host: match url.url().host_str() {
-                Some(x) => Some(x.to_string()),
-                None => None,
-            },
-            content_type: Self::get_mime(url.headers()),
-            headers: Some(url.headers().to_owned()),
-            crawled: true,
-        }
-    }
+    // pub fn from_response(url: &reqwest::Response) -> Self {
+    //     Link {
+    //         url: url.url().to_owned(),
+    //         host: match url.url().host() {
+    //             Some(x) => Some(x.to_owned()),
+    //             None => None,
+    //         },
+    //         content_type: Self::get_mime(url.headers()),
+    //         headers: Some(url.headers().to_owned()),
+    //         crawled: true,
+    //     }
+    // }
 
     pub fn new_relative(url: &str, base_url: &str) -> Option<Self> {
         let base_url_parsed = match Url::parse(base_url) {
@@ -73,17 +73,17 @@ impl Link {
         }
     }
 
-    fn get_depth(url: &Url) -> Option<usize> {
-        match url.path_segments() {
-            Some(x) => Some(x.count()),
-            None => None,
-        }
-    }
+    // fn get_depth(url: &Url) -> Option<usize> {
+    //     match url.path_segments() {
+    //         Some(x) => Some(x.count()),
+    //         None => None,
+    //     }
+    // }
 
     pub fn should_crawl(
         &self,
-        whitelist_host: &Option<HashSet<String>>,
-        blacklist_host: &Option<HashSet<String>>,
+        whitelist_host: &Option<HashSet<url::Host>>,
+        blacklist_host: &Option<HashSet<url::Host>>,
     ) -> bool {
         if let Some(x) = whitelist_host {
             return self.check_host(x, false);
@@ -94,7 +94,7 @@ impl Link {
         false
     }
 
-    fn check_host(&self, required_host: &HashSet<String>, default: bool) -> bool {
+    fn check_host(&self, required_host: &HashSet<url::Host>, default: bool) -> bool {
         match &self.host {
             Some(x) => required_host.contains(x),
             None => default,

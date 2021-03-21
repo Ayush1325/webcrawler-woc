@@ -1,28 +1,31 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
+use tokio::fs::File;
 use tokio::sync::mpsc::Receiver;
 
-pub fn read_urls(file_path: PathBuf) -> Result<HashSet<String>, std::io::Error> {
-    use std::fs::File;
-    use std::io::{BufRead, BufReader};
+pub async fn read_hosts(
+    file_path: PathBuf,
+) -> Result<HashSet<url::Host>, Box<dyn std::error::Error>> {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    use url::Host;
 
-    let file = File::open(file_path)?;
+    let file = File::open(file_path).await?;
     let reader = BufReader::new(file);
-    let list = reader
-        .lines()
-        .filter_map(|x| match x {
-            Ok(x) => Some(x),
-            Err(_) => None,
-        })
-        .collect();
-    Ok(list)
+    let mut list = reader.lines();
+    let mut hosts = HashSet::new();
+    while let Ok(Some(x)) = list.next_line().await {
+        if let Ok(host) = Host::parse(&x) {
+            hosts.insert(host);
+        }
+    }
+
+    Ok(hosts)
 }
 
 pub async fn write_links(
     file_path: PathBuf,
     mut rx: Receiver<crate::extractors::links::Link>,
 ) -> Result<(), std::io::Error> {
-    use tokio::fs::File;
     use tokio::io::{AsyncWriteExt, BufWriter};
 
     let file = File::create(file_path).await?;
