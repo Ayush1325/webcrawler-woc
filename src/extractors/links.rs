@@ -1,10 +1,8 @@
-use futures::{stream, StreamExt};
 use mime::Mime;
 use reqwest::Url;
 use select::{document::Document, predicate::Name};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, hash::Hash, hash::Hasher};
-use tokio::sync::mpsc;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Link {
@@ -12,7 +10,7 @@ pub struct Link {
     #[serde(skip)]
     pub host: Option<String>,
     #[serde(with = "opt_mime", skip_serializing_if = "Option::is_none")]
-    content_type: Option<Mime>,
+    pub content_type: Option<Mime>,
     #[serde(with = "opt_headermap", skip_serializing_if = "Option::is_none")]
     headers: Option<reqwest::header::HeaderMap>,
     #[serde(skip)]
@@ -120,15 +118,9 @@ impl Link {
         None
     }
 
-    pub fn check_html(&self) -> bool {
+    pub fn check_mime_from_list(&self, required_mime: &[Mime]) -> bool {
         if let Some(c) = &self.content_type {
-            let content_type = c.type_();
-            let content_subtype = c.subtype();
-            if content_type == mime::HTML
-                || (content_type == mime::TEXT && content_subtype == mime::HTML)
-            {
-                return true;
-            }
+            return required_mime.iter().any(|x| x == c);
         }
         false
     }
@@ -198,21 +190,22 @@ mod opt_headermap {
     }
 }
 
-pub async fn get_links_from_html(html: &str, url: &str, tx: &mpsc::Sender<Link>, limit: usize) {
-    let temp = Document::from(html)
+pub fn get_links_from_html(html: &str, url: &str) -> HashSet<Link> {
+    Document::from(html)
         .find(Name("a"))
         .filter_map(|x| x.attr("href"))
-        .map(|x| x.to_string())
-        .collect::<HashSet<String>>();
-    stream::iter(temp)
-        .filter_map(|x| async move { normalize_url(x, url) })
-        .for_each_concurrent(limit, |x| async move {
-            tx.send(x).await;
-        })
-        .await;
+        .filter_map(|x| normalize_url(x, url))
+        .collect::<HashSet<Link>>()
 }
 
-fn normalize_url(url: String, base_url: &str) -> Option<Link> {
+pub fn get_links_from_text(text: &str, url: &str) -> HashSet<Link> {
+    text.lines()
+        .map(|x| x.trim())
+        .filter_map(|x| normalize_url(x, url))
+        .collect()
+}
+
+pub fn normalize_url(url: &str, base_url: &str) -> Option<Link> {
     //! Helper function to parse url in a page.
     //! Converts relative urls to full urls.
     //! Also removes javascript urls and other false urls.
