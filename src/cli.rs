@@ -63,7 +63,7 @@ async fn launch_crawler(
     let whitelist = match whitelist {
         Some(x) => match file_handler::read_hosts(x).await {
             Ok(y) => Some(y),
-            Err(err) => return Err(err.to_string()),
+            Err(_) => return Err("Error in reading Whitelist".to_string()),
         },
         None => None,
     };
@@ -71,7 +71,7 @@ async fn launch_crawler(
     let blacklist = match blacklist {
         Some(x) => match file_handler::read_hosts(x).await {
             Ok(y) => Some(y),
-            Err(err) => return Err(err.to_string()),
+            Err(_) => return Err("Error in reading Blacklist".to_string()),
         },
         None => None,
     };

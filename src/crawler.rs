@@ -17,6 +17,10 @@ pub async fn crawl_with_depth(
     let mut crawled: HashSet<Url> = HashSet::new();
     let mut dont_crawl: HashSet<Url> = HashSet::new();
     let client = reqwest::Client::new();
+    let resolver = match trust_dns_resolver::TokioAsyncResolver::tokio_from_system_conf() {
+        Ok(x) => x,
+        Err(_) => return,
+    };
 
     to_crawl.insert(origin_url.url);
 
@@ -25,15 +29,14 @@ pub async fn crawl_with_depth(
 
         let (tx_cralwer, mut rx_crawler) = mpsc::channel::<Link>(task_limit);
 
-        stream::iter(to_crawl.clone())
-            .for_each(|x| async {
-                let tx_clone = tx_cralwer.clone();
-                let client_clone = client.clone();
-                tokio::spawn(
-                    async move { crawl_page(x, client_clone, tx_clone, task_limit).await },
-                );
-            })
-            .await;
+        to_crawl.iter().cloned().for_each(|x| {
+            let tx_clone = tx_cralwer.clone();
+            let client_clone = client.clone();
+            let resolver_clone = resolver.clone();
+            tokio::spawn(async move {
+                crawl_page(x, client_clone, tx_clone, task_limit, resolver_clone).await
+            });
+        });
 
         to_crawl.clear();
 
@@ -78,6 +81,10 @@ pub async fn crawl_no_depth(
     let mut crawled: HashSet<Url> = HashSet::new();
     let mut dont_crawl: HashSet<Url> = HashSet::new();
     let client = reqwest::Client::new();
+    let resolver = match trust_dns_resolver::TokioAsyncResolver::tokio_from_system_conf() {
+        Ok(x) => x,
+        Err(_) => return,
+    };
 
     to_crawl.insert(origin_url.url.clone());
 
@@ -98,15 +105,14 @@ pub async fn crawl_no_depth(
             first_crawl = false;
         }
 
-        stream::iter(to_crawl.clone())
-            .for_each_concurrent(task_limit, |x| async {
-                let tx_clone = tx_cralwer.clone();
-                let client_clone = client.clone();
-                tokio::spawn(
-                    async move { crawl_page(x, client_clone, tx_clone, task_limit).await },
-                );
-            })
-            .await;
+        to_crawl.iter().cloned().for_each(|x| {
+            let tx_clone = tx_cralwer.clone();
+            let client_clone = client.clone();
+            let resolver_clone = resolver.clone();
+            tokio::spawn(async move {
+                crawl_page(x, client_clone, tx_clone, task_limit, resolver_clone).await
+            });
+        });
 
         to_crawl.clear();
 
@@ -133,7 +139,13 @@ pub async fn crawl_no_depth(
     }
 }
 
-pub async fn crawl_page(url: Url, client: reqwest::Client, tx: mpsc::Sender<Link>, limit: usize) {
+pub async fn crawl_page(
+    url: Url,
+    client: reqwest::Client,
+    tx: mpsc::Sender<Link>,
+    limit: usize,
+    resolver: trust_dns_resolver::TokioAsyncResolver,
+) {
     let mut link = links::Link::from_url(&url);
     let resp = match get_page(url.as_str(), &client).await {
         Ok(x) => x,
@@ -144,6 +156,12 @@ pub async fn crawl_page(url: Url, client: reqwest::Client, tx: mpsc::Sender<Link
         }
     };
     link.update_from_response(&resp);
+    if let Some(host) = &link.host {
+        let host = host.to_string();
+        let ipv4 = links::resolve_ipv4(&resolver, &host).await;
+        let ipv6 = links::resolve_ipv6(&resolver, &host).await;
+        link.update_dns(ipv4, ipv6);
+    };
     let is_html = link.check_mime_from_list(&[mime::TEXT_HTML, mime::TEXT_HTML_UTF_8]);
     if let Err(_) = tx.send(link).await {
         return;

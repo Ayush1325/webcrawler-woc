@@ -6,13 +6,17 @@ mod file_handler;
 #[tokio::main]
 async fn main() {
     cli::entry().await;
-    // test().await;
+    //test().await;
 }
 
-#[cfg(debug_assertions)]
 async fn test() {
-    use std::path::PathBuf;
+    use std::time::Instant;
+    use trust_dns_resolver::TokioAsyncResolver;
 
-    let p = PathBuf::from("/home/ayush/Documents/Programming/Projects/WOC/whitelist.txt");
-    println!("{:#?}", file_handler::read_hosts(p).await.unwrap());
+    let resolver = TokioAsyncResolver::tokio_from_system_conf().unwrap();
+
+    let response = resolver.ipv4_lookup("www.google.com.").await.unwrap();
+
+    //println!("{:#?}", response.valid_until());
+    println!("{:#?}", response.iter().next());
 }

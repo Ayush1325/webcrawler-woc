@@ -2,7 +2,7 @@ use mime::Mime;
 use reqwest::Url;
 use select::{document::Document, predicate::Name};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, hash::Hash, hash::Hasher};
+use std::{collections::HashSet, hash::Hash, hash::Hasher, net::Ipv4Addr, net::Ipv6Addr};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Link {
@@ -15,6 +15,8 @@ pub struct Link {
     headers: Option<reqwest::header::HeaderMap>,
     #[serde(skip)]
     pub crawled: bool,
+    pub ipv4: Option<Ipv4Addr>,
+    pub ipv6: Option<Ipv6Addr>,
 }
 
 impl Link {
@@ -33,6 +35,8 @@ impl Link {
             content_type: None,
             headers: None,
             crawled: false,
+            ipv4: None,
+            ipv6: None,
         })
     }
 
@@ -46,6 +50,8 @@ impl Link {
             content_type: None,
             headers: None,
             crawled: false,
+            ipv4: None,
+            ipv6: None,
         }
     }
 
@@ -99,6 +105,11 @@ impl Link {
             Some(x) => required_host.contains(x),
             None => default,
         }
+    }
+
+    pub fn update_dns(&mut self, ipv4: Option<Ipv4Addr>, ipv6: Option<Ipv6Addr>) {
+        self.ipv4 = ipv4;
+        self.ipv6 = ipv6;
     }
 
     pub fn update_from_response(&mut self, response: &reqwest::Response) {
@@ -195,7 +206,7 @@ pub fn get_links_from_html(html: &str, url: &str) -> HashSet<Link> {
         .find(Name("a"))
         .filter_map(|x| x.attr("href"))
         .filter_map(|x| normalize_url(x, url))
-        .collect::<HashSet<Link>>()
+        .collect()
 }
 
 pub fn get_links_from_text(text: &str, url: &str) -> HashSet<Link> {
@@ -218,5 +229,31 @@ pub fn normalize_url(url: &str, base_url: &str) -> Option<Link> {
     match Link::new(&url) {
         Some(x) => Some(x),
         None => Link::new_relative(&url, base_url),
+    }
+}
+
+pub async fn resolve_ipv4(
+    resolver: &trust_dns_resolver::TokioAsyncResolver,
+    query: &str,
+) -> Option<Ipv4Addr> {
+    match resolver.ipv4_lookup(query).await {
+        Ok(x) => match x.iter().next() {
+            Some(x) => Some(x.to_owned()),
+            None => None,
+        },
+        Err(_) => None,
+    }
+}
+
+pub async fn resolve_ipv6(
+    resolver: &trust_dns_resolver::TokioAsyncResolver,
+    query: &str,
+) -> Option<Ipv6Addr> {
+    match resolver.ipv6_lookup(query).await {
+        Ok(x) => match x.iter().next() {
+            Some(x) => Some(x.to_owned()),
+            None => None,
+        },
+        Err(_) => None,
     }
 }
