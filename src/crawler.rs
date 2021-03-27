@@ -3,6 +3,7 @@ use futures::{stream, StreamExt};
 use links::Link;
 use reqwest::Url;
 use std::collections::HashSet;
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 pub async fn crawl_with_depth(
@@ -12,14 +13,19 @@ pub async fn crawl_with_depth(
     blacklist: Option<HashSet<url::Host>>,
     tx_output: mpsc::Sender<Link>,
     task_limit: usize,
-) {
+    timeout: u64,
+) -> Result<(), String> {
     let mut to_crawl: HashSet<Url> = HashSet::new();
     let mut crawled: HashSet<Url> = HashSet::new();
     let mut dont_crawl: HashSet<Url> = HashSet::new();
-    let client = reqwest::Client::new();
+    let client_builder = reqwest::ClientBuilder::new().timeout(Duration::new(timeout, 0));
+    let client = match client_builder.build() {
+        Ok(x) => x,
+        Err(_) => return Err("Could not build http client".to_string()),
+    };
     let resolver = match trust_dns_resolver::TokioAsyncResolver::tokio_from_system_conf() {
         Ok(x) => x,
-        Err(_) => return,
+        Err(_) => return Err("Could not build dns resolver".to_string()),
     };
 
     to_crawl.insert(origin_url.url);
@@ -46,7 +52,7 @@ pub async fn crawl_with_depth(
             if link.crawled {
                 crawled.insert(link.url.clone());
                 if let Err(_) = tx_output.send(link).await {
-                    return;
+                    return Err("Output Connection Closed".to_string());
                 }
             } else {
                 let should_crawl = link.should_crawl(&whitelist, &blacklist);
@@ -55,7 +61,7 @@ pub async fn crawl_with_depth(
                 } else if !should_crawl && !dont_crawl.contains(&link.url) {
                     dont_crawl.insert(link.url.clone());
                     if let Err(_) = tx_output.send(link).await {
-                        return;
+                        return Err("Output Connection Closed".to_string());
                     }
                 }
             }
@@ -68,6 +74,7 @@ pub async fn crawl_with_depth(
             let _ = tx_output.send(x).await;
         })
         .await;
+    Ok(())
 }
 
 pub async fn crawl_no_depth(
@@ -76,14 +83,19 @@ pub async fn crawl_no_depth(
     blacklist: Option<HashSet<url::Host>>,
     tx_output: mpsc::Sender<Link>,
     task_limit: usize,
-) {
+    timeout: u64,
+) -> Result<(), String> {
     let mut to_crawl: HashSet<Url> = HashSet::new();
     let mut crawled: HashSet<Url> = HashSet::new();
     let mut dont_crawl: HashSet<Url> = HashSet::new();
-    let client = reqwest::Client::new();
+    let client_builder = reqwest::ClientBuilder::new().timeout(Duration::new(timeout, 0));
+    let client = match client_builder.build() {
+        Ok(x) => x,
+        Err(_) => return Err("Could not build http client".to_string()),
+    };
     let resolver = match trust_dns_resolver::TokioAsyncResolver::tokio_from_system_conf() {
         Ok(x) => x,
-        Err(_) => return,
+        Err(_) => return Err("Could not build dns resolver".to_string()),
     };
 
     to_crawl.insert(origin_url.url.clone());
@@ -122,7 +134,7 @@ pub async fn crawl_no_depth(
             if link.crawled {
                 crawled.insert(link.url.clone());
                 if let Err(_) = tx_output.send(link).await {
-                    return;
+                    return Err("Output Connection Closed".to_string());
                 }
             } else {
                 let should_crawl = link.should_crawl(&whitelist, &blacklist);
@@ -131,12 +143,14 @@ pub async fn crawl_no_depth(
                 } else if !should_crawl && !dont_crawl.contains(&link.url) {
                     dont_crawl.insert(link.url.clone());
                     if let Err(_) = tx_output.send(link).await {
-                        return;
+                        return Err("Output Connection Closed".to_string());
                     }
                 }
             }
         }
     }
+
+    Ok(())
 }
 
 pub async fn crawl_page(
@@ -151,7 +165,8 @@ pub async fn crawl_page(
         Ok(x) => x,
         Err(_) => {
             link.crawled = true;
-            let _ = tx.send(link).await;
+            let _ = tx.send(link.clone()).await;
+
             return;
         }
     };
@@ -163,13 +178,15 @@ pub async fn crawl_page(
         link.update_dns(ipv4, ipv6);
     };
     let is_html = link.check_mime_from_list(&[mime::TEXT_HTML, mime::TEXT_HTML_UTF_8]);
-    if let Err(_) = tx.send(link).await {
+    if let Err(_) = tx.send(link.clone()).await {
         return;
     }
     if is_html {
         let html = match resp.text().await {
             Ok(x) => x,
-            Err(_) => return,
+            Err(_) => {
+                return;
+            }
         };
         let links = links::get_links_from_html(&html, url.as_str());
         let tx_ref = &tx;

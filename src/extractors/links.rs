@@ -15,8 +15,10 @@ pub struct Link {
     headers: Option<reqwest::header::HeaderMap>,
     #[serde(skip)]
     pub crawled: bool,
-    pub ipv4: Option<Ipv4Addr>,
-    pub ipv6: Option<Ipv6Addr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ipv4: Option<Ipv4Addr>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ipv6: Option<Ipv6Addr>,
 }
 
 impl Link {

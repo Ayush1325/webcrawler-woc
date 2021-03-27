@@ -10,7 +10,7 @@ struct CLI {
     url: String,
     #[clap(short, long)]
     depth: Option<usize>,
-    #[clap(short, long, default_value = "1000")]
+    #[clap(long, default_value = "1000")]
     task_limit: usize,
     #[clap(short, long)]
     whitelist: Option<PathBuf>,
@@ -20,6 +20,8 @@ struct CLI {
     output: Option<PathBuf>,
     #[clap(long)]
     verbose: bool,
+    #[clap(short, long, default_value = "10")]
+    timeout: u64,
 }
 
 pub async fn entry() {
@@ -36,6 +38,7 @@ pub async fn entry() {
         tx,
         opts.whitelist,
         opts.blacklist,
+        opts.timeout,
     );
 
     let returns = futures::future::try_join(output_handler, crawler_handler).await;
@@ -54,6 +57,7 @@ async fn launch_crawler(
     tx: mpsc::Sender<Link>,
     whitelist: Option<PathBuf>,
     blacklist: Option<PathBuf>,
+    timeout: u64,
 ) -> Result<(), String> {
     let origin_url = match Link::new(origin_url.as_str()) {
         Some(x) => x,
@@ -78,11 +82,16 @@ async fn launch_crawler(
 
     let handler = match depth {
         None => tokio::spawn(async move {
-            crate::crawler::crawl_no_depth(origin_url, whitelist, blacklist, tx, task_limit).await
+            crate::crawler::crawl_no_depth(
+                origin_url, whitelist, blacklist, tx, task_limit, timeout,
+            )
+            .await
         }),
         Some(x) => tokio::spawn(async move {
-            crate::crawler::crawl_with_depth(origin_url, x, whitelist, blacklist, tx, task_limit)
-                .await
+            crate::crawler::crawl_with_depth(
+                origin_url, x, whitelist, blacklist, tx, task_limit, timeout,
+            )
+            .await
         }),
     };
     match handler.await {

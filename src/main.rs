@@ -9,8 +9,8 @@ async fn main() {
     //test().await;
 }
 
+#[allow(dead_code)]
 async fn test() {
-    use std::time::Instant;
     use trust_dns_resolver::TokioAsyncResolver;
 
     let resolver = TokioAsyncResolver::tokio_from_system_conf().unwrap();
