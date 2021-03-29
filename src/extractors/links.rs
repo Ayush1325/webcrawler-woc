@@ -4,7 +4,9 @@ use regex::Regex;
 use reqwest::Url;
 use select::{document::Document, predicate::Name};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, hash::Hash, hash::Hasher, net::Ipv4Addr, net::Ipv6Addr};
+use std::{
+    collections::HashSet, hash::Hash, hash::Hasher, net::Ipv4Addr, net::Ipv6Addr, sync::Arc,
+};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum LinkType {
@@ -28,6 +30,7 @@ pub struct Link {
     #[serde(skip_serializing_if = "Option::is_none")]
     ipv6: Option<Ipv6Addr>,
     link_type: LinkType,
+    pub contains_words: bool,
 }
 
 impl Link {
@@ -38,6 +41,7 @@ impl Link {
         ipv6: Option<Ipv6Addr>,
         crawled: bool,
         link_type: LinkType,
+        contains_words: bool,
     ) -> Self {
         let host = match url.host() {
             Some(x) => Some(x.to_owned()),
@@ -56,6 +60,7 @@ impl Link {
             ipv6,
             crawled,
             link_type,
+            contains_words,
         }
     }
 
@@ -71,6 +76,7 @@ impl Link {
             None,
             false,
             Self::get_link_type(parsed_url.as_str()),
+            false,
         ))
     }
 
@@ -82,6 +88,7 @@ impl Link {
             None,
             false,
             Self::get_link_type(url.as_str()),
+            false,
         )
     }
 
@@ -244,6 +251,13 @@ pub fn get_links_from_text(text: &str, url: &str) -> HashSet<Link> {
         .collect()
 }
 
+pub fn check_words_html(html: &str, word_list: Arc<HashSet<String>>) -> bool {
+    word_list
+        .iter()
+        .find(|x| html.contains(x.as_str()))
+        .is_some()
+}
+
 pub fn normalize_url(url: &str, base_url: &str) -> Option<Link> {
     //! Helper function to parse url in a page.
     //! Converts relative urls to full urls.
@@ -284,33 +298,4 @@ pub async fn resolve_ipv6(
         },
         Err(_) => None,
     }
-}
-
-pub async fn new_link_async(
-    url: &str,
-    resolver: &trust_dns_resolver::TokioAsyncResolver,
-) -> Option<Link> {
-    let parsed_url = match Url::parse(url) {
-        Ok(x) => x,
-        Err(_) => return None,
-    };
-    let (host, ipv4, ipv6) = match parsed_url.host() {
-        Some(x) => {
-            let host_str = x.to_string();
-            let ipv4 = resolve_ipv4(&resolver, &host_str).await;
-            let ipv6 = resolve_ipv6(&resolver, &host_str).await;
-            (Some(x.to_owned()), ipv4, ipv6)
-        }
-        None => (None, None, None),
-    };
-    Some(Link {
-        url: parsed_url,
-        host,
-        content_type: None,
-        headers: None,
-        crawled: false,
-        ipv4,
-        ipv6,
-        link_type: LinkType::Other,
-    })
 }

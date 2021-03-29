@@ -1,25 +1,36 @@
 use crate::extractors::links::Link;
 use crate::file_handler;
 use clap::Clap;
-use std::{path::PathBuf, time::Instant};
+use std::{collections::HashSet, path::PathBuf, time::Instant};
 use tokio::sync::mpsc;
 
 #[derive(Clap)]
 #[clap(version = "1.0", author = "Ayush Singh <ayushsingh1325@gmail.com>")]
 struct CLI {
+    /// Url to be crawled.
     url: String,
+    /// Gives numeric depth for crawl.
     #[clap(short, long)]
     depth: Option<usize>,
+    /// Limits the number of parallel tasks. Doesn't work yet.
     #[clap(long, default_value = "1000")]
     task_limit: usize,
+    /// Path of file containing list of domains to be crawled.
     #[clap(short, long)]
     whitelist: Option<PathBuf>,
+    /// Path of file containing list of domains not to be crawled.
     #[clap(short, long)]
     blacklist: Option<PathBuf>,
+    /// Path to file containing words to search for
     #[clap(short, long)]
-    output: Option<PathBuf>,
+    search_words: Option<PathBuf>,
+    /// Path to the output folder.
+    #[clap(short, long)]
+    output_folder: Option<PathBuf>,
+    /// Output the link to standard output.
     #[clap(long)]
     verbose: bool,
+    /// Timout for http requests.
     #[clap(short, long, default_value = "10")]
     timeout: u64,
 }
@@ -30,7 +41,7 @@ pub async fn entry() {
     let opts = CLI::parse();
     let (tx, rx) = mpsc::channel(opts.task_limit);
 
-    let output_handler = handle_output(opts.output, opts.verbose, rx, opts.task_limit);
+    let output_handler = handle_output(opts.output_folder, opts.verbose, rx, opts.task_limit);
     let crawler_handler = launch_crawler(
         opts.url,
         opts.depth,
@@ -38,6 +49,7 @@ pub async fn entry() {
         tx,
         opts.whitelist,
         opts.blacklist,
+        opts.search_words,
         opts.timeout,
     );
 
@@ -57,6 +69,7 @@ async fn launch_crawler(
     tx: mpsc::Sender<Link>,
     whitelist: Option<PathBuf>,
     blacklist: Option<PathBuf>,
+    search_words: Option<PathBuf>,
     timeout: u64,
 ) -> Result<(), String> {
     let origin_url = match Link::new_from_str(origin_url.as_str()) {
@@ -80,16 +93,24 @@ async fn launch_crawler(
         None => None,
     };
 
+    let word_list = match search_words {
+        Some(x) => match file_handler::read_words(x).await {
+            Ok(x) => x,
+            Err(_) => return Err("Error in reading Word List".to_string()),
+        },
+        None => HashSet::new(),
+    };
+
     let handler = match depth {
         None => tokio::spawn(async move {
             crate::crawler::crawl_no_depth(
-                origin_url, whitelist, blacklist, tx, task_limit, timeout,
+                origin_url, whitelist, blacklist, word_list, tx, task_limit, timeout,
             )
             .await
         }),
         Some(x) => tokio::spawn(async move {
             crate::crawler::crawl_with_depth(
-                origin_url, x, whitelist, blacklist, tx, task_limit, timeout,
+                origin_url, x, whitelist, blacklist, word_list, tx, task_limit, timeout,
             )
             .await
         }),

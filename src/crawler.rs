@@ -2,8 +2,8 @@ use crate::extractors::links;
 use futures::{stream, StreamExt};
 use links::Link;
 use reqwest::Url;
-use std::collections::HashSet;
 use std::time::Duration;
+use std::{collections::HashSet, sync::Arc};
 use tokio::sync::mpsc;
 
 pub async fn crawl_with_depth(
@@ -11,6 +11,7 @@ pub async fn crawl_with_depth(
     crawl_depth: usize,
     whitelist: Option<HashSet<url::Host>>,
     blacklist: Option<HashSet<url::Host>>,
+    word_list: HashSet<String>,
     tx_output: mpsc::Sender<Link>,
     task_limit: usize,
     timeout: u64,
@@ -18,6 +19,7 @@ pub async fn crawl_with_depth(
     let mut to_crawl: HashSet<Url> = HashSet::new();
     let mut crawled: HashSet<Url> = HashSet::new();
     let mut dont_crawl: HashSet<Url> = HashSet::new();
+    let word_list = Arc::new(word_list);
     let client_builder = reqwest::ClientBuilder::new().timeout(Duration::new(timeout, 0));
     let client = match client_builder.build() {
         Ok(x) => x,
@@ -39,8 +41,17 @@ pub async fn crawl_with_depth(
             let tx_clone = tx_cralwer.clone();
             let client_clone = client.clone();
             let resolver_clone = resolver.clone();
+            let word_list_clone = word_list.clone();
             tokio::spawn(async move {
-                crawl_page(x, client_clone, tx_clone, task_limit, resolver_clone).await
+                crawl_page(
+                    x,
+                    client_clone,
+                    tx_clone,
+                    task_limit,
+                    resolver_clone,
+                    word_list_clone,
+                )
+                .await
             });
         });
 
@@ -81,6 +92,7 @@ pub async fn crawl_no_depth(
     origin_url: Link,
     whitelist: Option<HashSet<url::Host>>,
     blacklist: Option<HashSet<url::Host>>,
+    word_list: HashSet<String>,
     tx_output: mpsc::Sender<Link>,
     task_limit: usize,
     timeout: u64,
@@ -88,6 +100,7 @@ pub async fn crawl_no_depth(
     let mut to_crawl: HashSet<Url> = HashSet::new();
     let mut crawled: HashSet<Url> = HashSet::new();
     let mut dont_crawl: HashSet<Url> = HashSet::new();
+    let word_list = Arc::new(word_list);
     let client_builder = reqwest::ClientBuilder::new().timeout(Duration::new(timeout, 0));
     let client = match client_builder.build() {
         Ok(x) => x,
@@ -121,8 +134,17 @@ pub async fn crawl_no_depth(
             let tx_clone = tx_cralwer.clone();
             let client_clone = client.clone();
             let resolver_clone = resolver.clone();
+            let word_list_clone = word_list.clone();
             tokio::spawn(async move {
-                crawl_page(x, client_clone, tx_clone, task_limit, resolver_clone).await
+                crawl_page(
+                    x,
+                    client_clone,
+                    tx_clone,
+                    task_limit,
+                    resolver_clone,
+                    word_list_clone,
+                )
+                .await
             });
         });
 
@@ -159,6 +181,7 @@ pub async fn crawl_page(
     tx: mpsc::Sender<Link>,
     limit: usize,
     resolver: trust_dns_resolver::TokioAsyncResolver,
+    word_list: Arc<HashSet<String>>,
 ) {
     let mut link = links::Link::new_from_url(&url);
     let resp = match get_page(url.as_str(), &client).await {
@@ -178,9 +201,7 @@ pub async fn crawl_page(
         link.update_dns(ipv4, ipv6);
     };
     let is_html = link.check_mime_from_list(&[mime::TEXT_HTML, mime::TEXT_HTML_UTF_8]);
-    if let Err(_) = tx.send(link.clone()).await {
-        return;
-    }
+
     if is_html {
         let html = match resp.text().await {
             Ok(x) => x,
@@ -188,6 +209,7 @@ pub async fn crawl_page(
                 return;
             }
         };
+        link.contains_words = links::check_words_html(&html, word_list);
         let links = links::get_links_from_html(&html, url.as_str());
         let tx_ref = &tx;
         stream::iter(links)
@@ -195,6 +217,10 @@ pub async fn crawl_page(
                 let _ = tx_ref.send(x).await;
             })
             .await;
+    }
+
+    if let Err(_) = tx.send(link).await {
+        return;
     }
 }
 
