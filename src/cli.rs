@@ -59,7 +59,7 @@ async fn launch_crawler(
     blacklist: Option<PathBuf>,
     timeout: u64,
 ) -> Result<(), String> {
-    let origin_url = match Link::new(origin_url.as_str()) {
+    let origin_url = match Link::new_from_str(origin_url.as_str()) {
         Some(x) => x,
         None => return Err("Invalid Url".to_string()),
     };

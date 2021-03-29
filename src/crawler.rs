@@ -69,7 +69,7 @@ pub async fn crawl_with_depth(
     }
 
     stream::iter(to_crawl)
-        .map(|x| links::Link::from_url(&x))
+        .map(|x| links::Link::new_from_url(&x))
         .for_each_concurrent(task_limit, |x| async {
             let _ = tx_output.send(x).await;
         })
@@ -160,7 +160,7 @@ pub async fn crawl_page(
     limit: usize,
     resolver: trust_dns_resolver::TokioAsyncResolver,
 ) {
-    let mut link = links::Link::from_url(&url);
+    let mut link = links::Link::new_from_url(&url);
     let resp = match get_page(url.as_str(), &client).await {
         Ok(x) => x,
         Err(_) => {
@@ -231,7 +231,7 @@ pub async fn crawl_sitemaps(
 }
 
 async fn crawl_sitemap(url: Url, tx: mpsc::Sender<Link>, limit: usize, client: reqwest::Client) {
-    let mut link = links::Link::from_url(&url);
+    let mut link = links::Link::new_from_url(&url);
     let resp = match get_page(url.as_str(), &client).await {
         Ok(x) => x,
         Err(_) => return,

@@ -1,8 +1,16 @@
+use lazy_static::lazy_static;
 use mime::Mime;
+use regex::Regex;
 use reqwest::Url;
 use select::{document::Document, predicate::Name};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, hash::Hash, hash::Hasher, net::Ipv4Addr, net::Ipv6Addr};
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub enum LinkType {
+    Mail,
+    Other,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Link {
@@ -19,56 +27,63 @@ pub struct Link {
     ipv4: Option<Ipv4Addr>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ipv6: Option<Ipv6Addr>,
+    link_type: LinkType,
 }
 
 impl Link {
-    pub fn new(url: &str) -> Option<Self> {
+    pub fn new(
+        url: &Url,
+        headers: &Option<reqwest::header::HeaderMap>,
+        ipv4: Option<Ipv4Addr>,
+        ipv6: Option<Ipv6Addr>,
+        crawled: bool,
+        link_type: LinkType,
+    ) -> Self {
+        let host = match url.host() {
+            Some(x) => Some(x.to_owned()),
+            None => None,
+        };
+        let content_type = match headers {
+            Some(x) => Self::get_mime(x),
+            None => None,
+        };
+        Link {
+            url: url.to_owned(),
+            headers: headers.to_owned(),
+            content_type,
+            host,
+            ipv4,
+            ipv6,
+            crawled,
+            link_type,
+        }
+    }
+
+    pub fn new_from_str(url: &str) -> Option<Self> {
         let parsed_url = match Url::parse(url) {
             Ok(x) => x,
             Err(_) => return None,
         };
-        let host = match parsed_url.host() {
-            Some(x) => Some(x.to_owned()),
-            None => None,
-        };
-        Some(Link {
-            url: parsed_url,
-            host,
-            content_type: None,
-            headers: None,
-            crawled: false,
-            ipv4: None,
-            ipv6: None,
-        })
+        Some(Self::new(
+            &parsed_url,
+            &None,
+            None,
+            None,
+            false,
+            Self::get_link_type(parsed_url.as_str()),
+        ))
     }
 
-    pub fn from_url(url: &Url) -> Self {
-        Link {
-            url: url.clone(),
-            host: match url.host() {
-                Some(x) => Some(x.to_owned()),
-                None => None,
-            },
-            content_type: None,
-            headers: None,
-            crawled: false,
-            ipv4: None,
-            ipv6: None,
-        }
+    pub fn new_from_url(url: &Url) -> Self {
+        Self::new(
+            url,
+            &None,
+            None,
+            None,
+            false,
+            Self::get_link_type(url.as_str()),
+        )
     }
-
-    // pub fn from_response(url: &reqwest::Response) -> Self {
-    //     Link {
-    //         url: url.url().to_owned(),
-    //         host: match url.url().host() {
-    //             Some(x) => Some(x.to_owned()),
-    //             None => None,
-    //         },
-    //         content_type: Self::get_mime(url.headers()),
-    //         headers: Some(url.headers().to_owned()),
-    //         crawled: true,
-    //     }
-    // }
 
     pub fn new_relative(url: &str, base_url: &str) -> Option<Self> {
         let base_url_parsed = match Url::parse(base_url) {
@@ -76,17 +91,10 @@ impl Link {
             Err(_) => return None,
         };
         match base_url_parsed.join(url) {
-            Ok(x) => Self::new(x.as_str()),
+            Ok(x) => Self::new_from_str(x.as_str()),
             Err(_) => None,
         }
     }
-
-    // fn get_depth(url: &Url) -> Option<usize> {
-    //     match url.path_segments() {
-    //         Some(x) => Some(x.count()),
-    //         None => None,
-    //     }
-    // }
 
     pub fn should_crawl(
         &self,
@@ -136,6 +144,24 @@ impl Link {
             return required_mime.iter().any(|x| x == c);
         }
         false
+    }
+
+    fn get_link_type(url: &str) -> LinkType {
+        lazy_static! {
+            static ref EMAIL: Regex = Regex::new(
+                r"(?x)
+            ^(?P<login>[^@\s]+)@
+            ([[:word:]]+\.)*
+            [[:word:]]+$
+            "
+            )
+            .unwrap();
+        }
+        if EMAIL.is_match(url) || url.starts_with("mailto") {
+            return LinkType::Mail;
+        }
+
+        LinkType::Other
     }
 }
 
@@ -228,7 +254,7 @@ pub fn normalize_url(url: &str, base_url: &str) -> Option<Link> {
         return None;
     }
 
-    match Link::new(&url) {
+    match Link::new_from_str(&url) {
         Some(x) => Some(x),
         None => Link::new_relative(&url, base_url),
     }
@@ -258,4 +284,33 @@ pub async fn resolve_ipv6(
         },
         Err(_) => None,
     }
+}
+
+pub async fn new_link_async(
+    url: &str,
+    resolver: &trust_dns_resolver::TokioAsyncResolver,
+) -> Option<Link> {
+    let parsed_url = match Url::parse(url) {
+        Ok(x) => x,
+        Err(_) => return None,
+    };
+    let (host, ipv4, ipv6) = match parsed_url.host() {
+        Some(x) => {
+            let host_str = x.to_string();
+            let ipv4 = resolve_ipv4(&resolver, &host_str).await;
+            let ipv6 = resolve_ipv6(&resolver, &host_str).await;
+            (Some(x.to_owned()), ipv4, ipv6)
+        }
+        None => (None, None, None),
+    };
+    Some(Link {
+        url: parsed_url,
+        host,
+        content_type: None,
+        headers: None,
+        crawled: false,
+        ipv4,
+        ipv6,
+        link_type: LinkType::Other,
+    })
 }
