@@ -6,6 +6,21 @@ use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};
 use tokio::sync::mpsc;
 
+fn init_reqwest_client(timeout: u64) -> Result<reqwest::Client, String> {
+    let client_builder = reqwest::ClientBuilder::new().timeout(Duration::new(timeout, 0));
+    match client_builder.build() {
+        Ok(x) => Ok(x),
+        Err(_) => Err("Could not build http client".to_string()),
+    }
+}
+
+fn init_dns_resolver() -> Result<trust_dns_resolver::TokioAsyncResolver, String> {
+    match trust_dns_resolver::TokioAsyncResolver::tokio_from_system_conf() {
+        Ok(x) => Ok(x),
+        Err(_) => Err("Could not build dns resolver".to_string()),
+    }
+}
+
 pub async fn crawl_with_depth(
     origin_url: Link,
     crawl_depth: usize,
@@ -13,6 +28,7 @@ pub async fn crawl_with_depth(
     blacklist: Option<HashSet<url::Host>>,
     word_list: HashSet<String>,
     tx_output: mpsc::Sender<Link>,
+    tx_selenium: mpsc::Sender<String>,
     task_limit: usize,
     timeout: u64,
 ) -> Result<(), String> {
@@ -20,15 +36,9 @@ pub async fn crawl_with_depth(
     let mut crawled: HashSet<Url> = HashSet::new();
     let mut dont_crawl: HashSet<Url> = HashSet::new();
     let word_list = Arc::new(word_list);
-    let client_builder = reqwest::ClientBuilder::new().timeout(Duration::new(timeout, 0));
-    let client = match client_builder.build() {
-        Ok(x) => x,
-        Err(_) => return Err("Could not build http client".to_string()),
-    };
-    let resolver = match trust_dns_resolver::TokioAsyncResolver::tokio_from_system_conf() {
-        Ok(x) => x,
-        Err(_) => return Err("Could not build dns resolver".to_string()),
-    };
+
+    let client = init_reqwest_client(timeout)?;
+    let resolver = init_dns_resolver()?;
 
     to_crawl.insert(origin_url.url);
 
@@ -39,6 +49,7 @@ pub async fn crawl_with_depth(
 
         to_crawl.iter().cloned().for_each(|x| {
             let tx_clone = tx_cralwer.clone();
+            let tx_selenium_clone = tx_selenium.clone();
             let client_clone = client.clone();
             let resolver_clone = resolver.clone();
             let word_list_clone = word_list.clone();
@@ -47,6 +58,7 @@ pub async fn crawl_with_depth(
                     x,
                     client_clone,
                     tx_clone,
+                    tx_selenium_clone,
                     task_limit,
                     resolver_clone,
                     word_list_clone,
@@ -94,6 +106,7 @@ pub async fn crawl_no_depth(
     blacklist: Option<HashSet<url::Host>>,
     word_list: HashSet<String>,
     tx_output: mpsc::Sender<Link>,
+    tx_selenium: mpsc::Sender<String>,
     task_limit: usize,
     timeout: u64,
 ) -> Result<(), String> {
@@ -101,15 +114,9 @@ pub async fn crawl_no_depth(
     let mut crawled: HashSet<Url> = HashSet::new();
     let mut dont_crawl: HashSet<Url> = HashSet::new();
     let word_list = Arc::new(word_list);
-    let client_builder = reqwest::ClientBuilder::new().timeout(Duration::new(timeout, 0));
-    let client = match client_builder.build() {
-        Ok(x) => x,
-        Err(_) => return Err("Could not build http client".to_string()),
-    };
-    let resolver = match trust_dns_resolver::TokioAsyncResolver::tokio_from_system_conf() {
-        Ok(x) => x,
-        Err(_) => return Err("Could not build dns resolver".to_string()),
-    };
+
+    let client = init_reqwest_client(timeout)?;
+    let resolver = init_dns_resolver()?;
 
     to_crawl.insert(origin_url.url.clone());
 
@@ -132,6 +139,7 @@ pub async fn crawl_no_depth(
 
         to_crawl.iter().cloned().for_each(|x| {
             let tx_clone = tx_cralwer.clone();
+            let tx_selenium_clone = tx_selenium.clone();
             let client_clone = client.clone();
             let resolver_clone = resolver.clone();
             let word_list_clone = word_list.clone();
@@ -140,6 +148,7 @@ pub async fn crawl_no_depth(
                     x,
                     client_clone,
                     tx_clone,
+                    tx_selenium_clone,
                     task_limit,
                     resolver_clone,
                     word_list_clone,
@@ -179,6 +188,7 @@ pub async fn crawl_page(
     url: Url,
     client: reqwest::Client,
     tx: mpsc::Sender<Link>,
+    tx_selenium: mpsc::Sender<String>,
     limit: usize,
     resolver: trust_dns_resolver::TokioAsyncResolver,
     word_list: Arc<HashSet<String>>,
@@ -209,7 +219,11 @@ pub async fn crawl_page(
                 return;
             }
         };
-        link.contains_words = links::check_words_html(&html, word_list);
+        if links::check_words_html(&html, word_list) {
+            link.contains_words = true;
+            let _ = tx_selenium.send(link.url.to_string()).await;
+        }
+
         let links = links::get_links_from_html(&html, url.as_str());
         let tx_ref = &tx;
         stream::iter(links)

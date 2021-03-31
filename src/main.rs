@@ -11,12 +11,16 @@ async fn main() {
 
 #[allow(dead_code)]
 async fn test() {
-    use trust_dns_resolver::TokioAsyncResolver;
+    use thirtyfour::prelude::*;
 
-    let resolver = TokioAsyncResolver::tokio_from_system_conf().unwrap();
+    let mut caps = DesiredCapabilities::chrome();
+    caps.add_chrome_arg("--enable-automation").unwrap();
+    let driver = WebDriver::new("http://localhost:4444/wd/hub", &caps)
+        .await
+        .unwrap();
+    let p = std::path::PathBuf::from("/media/storage/test.png");
 
-    let response = resolver.ipv4_lookup("www.google.com.").await.unwrap();
-
-    //println!("{:#?}", response.valid_until());
-    println!("{:#?}", response.iter().next());
+    driver.get("https://wikipedia.org").await.unwrap();
+    driver.fullscreen_window().await.unwrap();
+    driver.screenshot(&p).await.unwrap();
 }

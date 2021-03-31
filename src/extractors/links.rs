@@ -1,6 +1,4 @@
-use lazy_static::lazy_static;
 use mime::Mime;
-use regex::Regex;
 use reqwest::Url;
 use select::{document::Document, predicate::Name};
 use serde::{Deserialize, Serialize};
@@ -75,7 +73,7 @@ impl Link {
             None,
             None,
             false,
-            Self::get_link_type(parsed_url.as_str()),
+            Self::get_link_type(&parsed_url),
             false,
         ))
     }
@@ -87,7 +85,7 @@ impl Link {
             None,
             None,
             false,
-            Self::get_link_type(url.as_str()),
+            Self::get_link_type(url),
             false,
         )
     }
@@ -153,18 +151,8 @@ impl Link {
         false
     }
 
-    fn get_link_type(url: &str) -> LinkType {
-        lazy_static! {
-            static ref EMAIL: Regex = Regex::new(
-                r"(?x)
-            ^(?P<login>[^@\s]+)@
-            ([[:word:]]+\.)*
-            [[:word:]]+$
-            "
-            )
-            .unwrap();
-        }
-        if EMAIL.is_match(url) || url.starts_with("mailto") {
+    fn get_link_type(url: &Url) -> LinkType {
+        if url.scheme() == "mailto" {
             return LinkType::Mail;
         }
 
@@ -297,5 +285,22 @@ pub async fn resolve_ipv6(
             None => None,
         },
         Err(_) => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{collections::HashSet, sync::Arc};
+
+    #[test]
+    fn get_words() {
+        let html = "This is a sample page which does not work";
+        let mut word_list = HashSet::new();
+
+        assert!(!check_words_html(html, Arc::new(word_list.clone())));
+
+        word_list.insert("sample".to_string());
+        assert!(check_words_html(html, Arc::new(word_list)))
     }
 }
