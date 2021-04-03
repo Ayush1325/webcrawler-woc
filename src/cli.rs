@@ -175,6 +175,7 @@ async fn handle_selenium(
     mut rx: mpsc::Receiver<String>,
 ) -> Result<(), thirtyfour::error::WebDriverError> {
     use thirtyfour::prelude::*;
+    use tokio::fs;
 
     if flag {
         if let Some(file_path) = file_path {
@@ -182,7 +183,14 @@ async fn handle_selenium(
             caps.add_chrome_arg("--enable-automation")?;
             let driver = WebDriver::new("http://localhost:4444/wd/hub", &caps).await?;
             // driver.fullscreen_window().await?;
-            let mut file_name = 0;
+            let mut file_name = 1;
+            let mut file_path = file_path.clone();
+            file_path.push("screenshots");
+            if fs::create_dir_all(&file_path).await.is_err() {
+                return Err(thirtyfour::error::WebDriverError::FatalError(
+                    "".to_string(),
+                ));
+            }
 
             while let Some(link) = rx.recv().await {
                 if driver.get(link.as_str()).await.is_ok() {

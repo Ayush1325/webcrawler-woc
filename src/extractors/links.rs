@@ -9,6 +9,7 @@ use std::{
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum LinkType {
     Mail,
+    PhoneNo,
     Other,
 }
 
@@ -27,7 +28,7 @@ pub struct Link {
     ipv4: Option<Ipv4Addr>,
     #[serde(skip_serializing_if = "Option::is_none")]
     ipv6: Option<Ipv6Addr>,
-    link_type: LinkType,
+    pub link_type: LinkType,
     pub contains_words: bool,
 }
 
@@ -152,11 +153,11 @@ impl Link {
     }
 
     fn get_link_type(url: &Url) -> LinkType {
-        if url.scheme() == "mailto" {
-            return LinkType::Mail;
+        match url.scheme() {
+            "mailto" => LinkType::Mail,
+            "tel" => LinkType::PhoneNo,
+            _ => LinkType::Other,
         }
-
-        LinkType::Other
     }
 }
 
