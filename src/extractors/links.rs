@@ -1,3 +1,4 @@
+//! Submodule containg functins realated to Links.
 use mime::Mime;
 use reqwest::Url;
 use select::{document::Document, predicate::Name};
@@ -39,6 +40,8 @@ pub struct Link {
 }
 
 impl Link {
+    /// Creates a new Link.
+    /// Does not assume any argument.
     pub fn new(
         url: &Url,
         headers: &Option<reqwest::header::HeaderMap>,
@@ -69,6 +72,8 @@ impl Link {
         }
     }
 
+    /// Creates a new link from string url.
+    /// Returns None if Url cannot be parsed.
     pub fn new_from_str(url: &str) -> Option<Self> {
         let parsed_url = match Url::parse(url) {
             Ok(x) => x,
@@ -85,6 +90,8 @@ impl Link {
         ))
     }
 
+    /// Creates a new Link form Url url.
+    /// Assumes other things
     pub fn new_from_url(url: &Url) -> Self {
         Self::new(
             url,
@@ -97,6 +104,8 @@ impl Link {
         )
     }
 
+    /// Creates a new Link if realtive url is supplied.
+    /// Need the relative url and the base url.
     pub fn new_relative(url: &str, base_url: &str) -> Option<Self> {
         let base_url_parsed = match Url::parse(base_url) {
             Ok(x) => x,
@@ -108,6 +117,8 @@ impl Link {
         }
     }
 
+    /// Checks if a url should be crawled.
+    /// Checks the whitelist and blacklist
     pub fn should_crawl(
         &self,
         whitelist_host: &Option<HashSet<url::Host>>,
@@ -122,6 +133,8 @@ impl Link {
         false
     }
 
+    /// Function to check if host is present in a list of hosts.
+    /// Mostly for whitelist and blacklist.
     fn check_host(&self, required_host: &HashSet<url::Host>, default: bool) -> bool {
         match &self.host {
             Some(x) => required_host.contains(x),
@@ -129,17 +142,20 @@ impl Link {
         }
     }
 
+    /// Function to update ipv4 and ipv6 dns.
     pub fn update_dns(&mut self, ipv4: Option<Ipv4Addr>, ipv6: Option<Ipv6Addr>) {
         self.ipv4 = ipv4;
         self.ipv6 = ipv6;
     }
 
+    /// Function to updated Link from http response.
     pub fn update_from_response(&mut self, response: &reqwest::Response) {
         self.content_type = Self::get_mime(response.headers());
         self.headers = Some(response.headers().to_owned());
         self.crawled = true;
     }
 
+    /// Function to get page mime type from http header.
     fn get_mime(header: &reqwest::header::HeaderMap) -> Option<Mime> {
         let mime_str = header.get(reqwest::header::CONTENT_TYPE)?.to_str();
         if let Ok(mime_type) = mime_str {
@@ -151,6 +167,7 @@ impl Link {
         None
     }
 
+    /// Function to check if the mime is present in a list.
     pub fn check_mime_from_list(&self, required_mime: &[Mime]) -> bool {
         if let Some(c) = &self.content_type {
             return required_mime.iter().any(|x| x == c);
@@ -158,6 +175,7 @@ impl Link {
         false
     }
 
+    /// Function to get the LinkType
     fn get_link_type(url: &Url) -> LinkType {
         match url.scheme() {
             "mailto" => LinkType::Mail,
@@ -191,6 +209,8 @@ impl fmt::Display for Link {
     }
 }
 
+/// Implementation of serializer and deserializer for Option<Mime> type.
+/// Calls the methods from hyper_serde
 mod opt_mime {
     use mime::Mime;
     use serde::{Deserializer, Serializer};
@@ -216,6 +236,8 @@ mod opt_mime {
     }
 }
 
+/// Implementation of serializer and deserializer for Option<reqwest::header::HeaderMap> type.
+/// Calls the methods from http_serde
 mod opt_headermap {
     use reqwest::header::HeaderMap;
     use serde::{Deserializer, Serializer};
@@ -241,6 +263,8 @@ mod opt_headermap {
     }
 }
 
+/// Function to get links from a htmp Document.
+/// Gets links wraped in a tags
 pub fn get_links_from_html(html: &str, url: &str) -> HashSet<Link> {
     Document::from(html)
         .find(Name("a"))
@@ -249,6 +273,7 @@ pub fn get_links_from_html(html: &str, url: &str) -> HashSet<Link> {
         .collect()
 }
 
+/// Function to get links from a text file containing link in each line
 pub fn get_links_from_text(text: &str, url: &str) -> HashSet<Link> {
     text.lines()
         .map(|x| x.trim())
@@ -256,6 +281,7 @@ pub fn get_links_from_text(text: &str, url: &str) -> HashSet<Link> {
         .collect()
 }
 
+/// Function to check if a word from a list is present in a page.
 pub fn check_words_html(html: &str, word_list: Arc<HashSet<String>>) -> bool {
     word_list
         .iter()
@@ -263,10 +289,10 @@ pub fn check_words_html(html: &str, word_list: Arc<HashSet<String>>) -> bool {
         .is_some()
 }
 
+/// Helper function to parse url in a page.
+/// Converts relative urls to full urls.
+/// Also removes javascript urls and other false urls.
 pub fn normalize_url(url: &str, base_url: &str) -> Option<Link> {
-    //! Helper function to parse url in a page.
-    //! Converts relative urls to full urls.
-    //! Also removes javascript urls and other false urls.
     if url.starts_with("#") {
         // Checks for internal links.
         // Maybe will make it optioanl to ignore them.
@@ -279,6 +305,7 @@ pub fn normalize_url(url: &str, base_url: &str) -> Option<Link> {
     }
 }
 
+/// Function to get IPV4 DNS
 pub async fn resolve_ipv4(
     resolver: &trust_dns_resolver::TokioAsyncResolver,
     query: &str,
@@ -292,6 +319,7 @@ pub async fn resolve_ipv4(
     }
 }
 
+/// Function to get IPV6 DNS
 pub async fn resolve_ipv6(
     resolver: &trust_dns_resolver::TokioAsyncResolver,
     query: &str,

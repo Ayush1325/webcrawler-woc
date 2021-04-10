@@ -1,3 +1,6 @@
+/*!
+Module Containing the Command Line part of the Crawler.
+*/
 use crate::extractors::links::Link;
 use crate::file_handler;
 use clap::Clap;
@@ -39,6 +42,8 @@ struct CLI {
     task_limit: usize,
 }
 
+/// Funtion that servers as the entry point to the Command Line Tool.
+/// It parses the arguments and fires off the methods.
 pub async fn entry() {
     let start_time = Instant::now();
     let opts = CLI::parse();
@@ -94,6 +99,7 @@ pub async fn entry() {
     println!("Time Taken: {} seconds", start_time.elapsed().as_secs());
 }
 
+/// Funtion to launch the crawler. Fires off the correct crawler method depending on the arguments.
 async fn launch_crawler(
     origin_url: String,
     depth: Option<usize>,
@@ -170,6 +176,8 @@ async fn launch_crawler(
     }
 }
 
+/// Function to handle selenium.
+/// Uses the chrome/chromium browser for now.
 async fn handle_selenium(
     file_path: Option<PathBuf>,
     flag: bool,
@@ -208,6 +216,8 @@ async fn handle_selenium(
     Ok(())
 }
 
+/// Funtion to handle the output. Handles both console and file output.
+/// Outputs in JSON format.
 async fn handle_output(
     file_path: Option<PathBuf>,
     verbose: bool,
@@ -246,6 +256,7 @@ async fn handle_output(
     }
 }
 
+/// Function to write to Standard Output.
 async fn write_standard_output(mut rx: mpsc::Receiver<Link>) -> Result<(), std::io::Error> {
     while let Some(link) = rx.recv().await {
         println!("{},", link);

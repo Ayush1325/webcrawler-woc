@@ -1,3 +1,6 @@
+/*!
+Module Containing the Crawler functions.
+*/
 use crate::extractors::links;
 use futures::{stream, StreamExt};
 use links::Link;
@@ -6,6 +9,8 @@ use std::time::Duration;
 use std::{collections::HashSet, sync::Arc};
 use tokio::sync::mpsc;
 
+/// Function to initialize Reqwest Client.
+/// Also specifies the timeout.
 fn init_reqwest_client(timeout: u64) -> Result<reqwest::Client, String> {
     let client_builder = reqwest::ClientBuilder::new().timeout(Duration::new(timeout, 0));
     match client_builder.build() {
@@ -14,6 +19,7 @@ fn init_reqwest_client(timeout: u64) -> Result<reqwest::Client, String> {
     }
 }
 
+/// Function to initialize DNS resolver.
 fn init_dns_resolver() -> Result<trust_dns_resolver::TokioAsyncResolver, String> {
     match trust_dns_resolver::TokioAsyncResolver::tokio_from_system_conf() {
         Ok(x) => Ok(x),
@@ -21,6 +27,8 @@ fn init_dns_resolver() -> Result<trust_dns_resolver::TokioAsyncResolver, String>
     }
 }
 
+/// Funtion to start crawling when depth is specified.
+/// Does not use Sitemaps.
 pub async fn crawl_with_depth(
     origin_url: Link,
     crawl_depth: usize,
@@ -100,6 +108,8 @@ pub async fn crawl_with_depth(
     Ok(())
 }
 
+/// Function to crawl when depth is not specified.
+/// Also makes use of Sitemaps.
 pub async fn crawl_no_depth(
     origin_url: Link,
     whitelist: Option<HashSet<url::Host>>,
@@ -184,7 +194,9 @@ pub async fn crawl_no_depth(
     Ok(())
 }
 
-pub async fn crawl_page(
+/// Function to handle crawling a single page.
+/// Is Single Threaded.
+async fn crawl_page(
     url: Url,
     client: reqwest::Client,
     tx: mpsc::Sender<Link>,
@@ -238,12 +250,8 @@ pub async fn crawl_page(
     }
 }
 
-pub async fn crawl_sitemaps(
-    url: Url,
-    tx: mpsc::Sender<Link>,
-    limit: usize,
-    client: reqwest::Client,
-) {
+/// Function to find and crawl sitemaps from robottxt.
+async fn crawl_sitemaps(url: Url, tx: mpsc::Sender<Link>, limit: usize, client: reqwest::Client) {
     let mut robottxt_url = url.clone();
     robottxt_url.set_path("robots.txt");
     let robottxt = match get_page(robottxt_url.as_str(), &client).await {
@@ -270,6 +278,8 @@ pub async fn crawl_sitemaps(
         });
 }
 
+/// Function to crawl a single sitemap.
+/// Currently only supports text sitemap
 async fn crawl_sitemap(url: Url, tx: mpsc::Sender<Link>, limit: usize, client: reqwest::Client) {
     let mut link = links::Link::new_from_url(&url);
     let resp = match get_page(url.as_str(), &client).await {
@@ -296,7 +306,8 @@ async fn crawl_sitemap(url: Url, tx: mpsc::Sender<Link>, limit: usize, client: r
         .await;
 }
 
-pub async fn get_page(
+/// Funtion to perform a get request on a url
+async fn get_page(
     url: &str,
     client: &reqwest::Client,
 ) -> Result<reqwest::Response, reqwest::Error> {

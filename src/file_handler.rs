@@ -1,3 +1,4 @@
+//! Module containing functions related to File IO.
 use std::collections::HashSet;
 use std::path::PathBuf;
 use tokio::fs::File;
@@ -6,6 +7,8 @@ use tokio::sync::mpsc::Receiver;
 
 use crate::extractors::links;
 
+/// Function to Read and return a list of hosts from a file.
+/// Used from reading whitelist and blacklist.
 pub async fn read_hosts(
     file_path: PathBuf,
 ) -> Result<HashSet<url::Host>, Box<dyn std::error::Error>> {
@@ -24,6 +27,9 @@ pub async fn read_hosts(
     Ok(hosts)
 }
 
+/// Function to read and return a list of words from a file.
+/// Each line contains only one word.
+/// Used for reading Search Words.
 pub async fn read_words(file_path: PathBuf) -> Result<HashSet<String>, Box<dyn std::error::Error>> {
     let file = File::open(file_path).await?;
     let reader = BufReader::new(file);
@@ -36,6 +42,8 @@ pub async fn read_words(file_path: PathBuf) -> Result<HashSet<String>, Box<dyn s
     Ok(words)
 }
 
+/// Function to write links to files.
+/// Seperate files for crawled, not crawled, emails and phone no.
 pub async fn write_links(
     folder_path: PathBuf,
     mut rx: Receiver<links::Link>,
@@ -73,6 +81,7 @@ pub async fn write_links(
     Ok(())
 }
 
+/// Intialize BufWriter
 async fn init_writer(
     file_name: &str,
     folder_path: &PathBuf,
@@ -84,12 +93,14 @@ async fn init_writer(
     Ok(writer)
 }
 
+/// Write Json Link to a file.
 async fn write_json(writer: &mut BufWriter<File>, json: &str) -> Result<(), std::io::Error> {
     writer.write(json.as_bytes()).await?;
     writer.write(b",\n").await?;
     Ok(())
 }
 
+/// Clean up after writers.
 async fn clean_writer(writer: &mut BufWriter<File>) -> Result<(), std::io::Error> {
     writer.write(b"{}\n]").await?;
     writer.flush().await?;
