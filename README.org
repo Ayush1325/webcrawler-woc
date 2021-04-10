@@ -5,15 +5,17 @@
 like external links, mails, etc. Like a web crawler used by search engines but specific for
 a domain and url.
 - It is a project for WOC.
-* Tech Stack
-- [[https://www.rust-lang.org/][Rust]]
-- [[https://github.com/seanmonstar/reqwest][reqwest]]
-- [[https://github.com/utkarshkukreti/select.rs][select]]
-- [[https://github.com/clap-rs/clap][clap]]
-- [[https://tokio.rs/][Tokio]]
-- [[https://docs.rs/futures/0.3.13/futures/][Futures]]
-- [[https://serde.rs/][Serde]]
-- [[https://docs.rs/mime/0.3.16/mime/][Mime]]
+* Dependencies
+- [[https://github.com/seanmonstar/reqwest][reqwest]] : For making http requests.
+- [[https://github.com/utkarshkukreti/select.rs][select]] : A library to extract useful data from HTML documents, suitable for web scraping.
+- [[https://github.com/clap-rs/clap][clap]] : Command Line Argument Parser for Rust
+- [[https://tokio.rs/][Tokio]] : A runtime for writing reliable, asynchronous, and slim applications with the Rust programming language.
+- [[https://docs.rs/futures/0.3.13/futures/][Futures]] : A library providing the foundations for asynchronous programming in Rust.
+- [[https://serde.rs/][Serde]] : A framework for serializing and deserializing Rust data structures efficiently and generically.
+- [[https://docs.rs/mime/0.3.16/mime/][Mime]] : Support MIME (HTTP Media Types) as strong types in Rust.
+- [[https://github.com/bluejekyll/trust-dns][trust-dns-resolver]] : A dns resolver written in Rust.
+- [[https://github.com/stevepryde/thirtyfour][thirtyfour]] : A Selenium / WebDriver library for Rust, for automated website UI testing.
+- [[https://github.com/servo/rust-url][url]] : URL library for Rust
 * Resources
 - [[https://rolisz.ro/2020/03/01/web-crawler-in-rust/]]
 - https://crawler-test.com/

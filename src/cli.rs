@@ -7,12 +7,12 @@ use tokio::sync::mpsc;
 #[derive(Clap, Clone)]
 #[clap(version = "1.0", author = "Ayush Singh <ayushsingh1325@gmail.com>")]
 struct CLI {
-    /// Url to be crawled.
+    /// Seed url for crawler.
     url: String,
     /// Gives numeric depth for crawl.
     #[clap(short, long)]
     depth: Option<usize>,
-    /// Limits the number of parallel tasks. Doesn't work yet.
+    /// Limits the number of parallel tasks.
     #[clap(long, default_value = "1000")]
     task_limit: usize,
     /// Path of file containing list of domains to be crawled.
@@ -21,7 +21,7 @@ struct CLI {
     /// Path of file containing list of domains not to be crawled.
     #[clap(short, long)]
     blacklist: Option<PathBuf>,
-    /// Path to file containing words to search for
+    /// Path to file containing words to search for in the page.
     #[clap(short, long)]
     search_words: Option<PathBuf>,
     /// Path to the output folder.
@@ -33,15 +33,16 @@ struct CLI {
     /// Timout for http requests.
     #[clap(short, long, default_value = "10")]
     timeout: u64,
-    /// Flag for Enabling Selenium
+    /// Flag for taking screenshots using Selenium.
+    /// Takes screenshot if a word from wordlist is found in the page.
     #[clap(long)]
     selenium: bool,
 }
 
 pub async fn entry() {
     let start_time = Instant::now();
-    println!("Started");
     let opts = CLI::parse();
+    println!("Started");
     let task_limit = opts.task_limit;
     let (tx_output, rx_output) = mpsc::channel(task_limit);
     let (tx_selenium, rx_selenium) = mpsc::channel(task_limit);
