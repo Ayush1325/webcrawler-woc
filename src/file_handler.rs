@@ -51,7 +51,7 @@ pub async fn write_links(
     let mut tel_writer = init_writer(TEL_FILE_NAME, &folder_path).await?;
 
     while let Some(link) = rx.recv().await {
-        let temp = serde_json::to_vec_pretty(&link)?;
+        let temp = format!("{}", link);
         match link.link_type {
             links::LinkType::Mail => write_json(&mut mail_writer, &temp).await?,
             links::LinkType::PhoneNo => write_json(&mut tel_writer, &temp).await?,
@@ -84,8 +84,8 @@ async fn init_writer(
     Ok(writer)
 }
 
-async fn write_json(writer: &mut BufWriter<File>, json: &[u8]) -> Result<(), std::io::Error> {
-    writer.write(json).await?;
+async fn write_json(writer: &mut BufWriter<File>, json: &str) -> Result<(), std::io::Error> {
+    writer.write(json.as_bytes()).await?;
     writer.write(b",\n").await?;
     Ok(())
 }

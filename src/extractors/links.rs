@@ -3,7 +3,7 @@ use reqwest::Url;
 use select::{document::Document, predicate::Name};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet, hash::Hash, hash::Hasher, net::Ipv4Addr, net::Ipv6Addr, sync::Arc,
+    collections::HashSet, fmt, hash::Hash, hash::Hasher, net::Ipv4Addr, net::Ipv6Addr, sync::Arc,
 };
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -172,6 +172,16 @@ impl Eq for Link {}
 impl Hash for Link {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.url.hash(state);
+    }
+}
+
+impl fmt::Display for Link {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let json = match serde_json::to_string_pretty(self) {
+            Ok(x) => x,
+            Err(_) => return Err(fmt::Error),
+        };
+        write!(f, "{}", json)
     }
 }
 

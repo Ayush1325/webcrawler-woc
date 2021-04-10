@@ -248,8 +248,7 @@ async fn handle_output(
 
 async fn write_standard_output(mut rx: mpsc::Receiver<Link>) -> Result<(), std::io::Error> {
     while let Some(link) = rx.recv().await {
-        let json = serde_json::to_string_pretty(&link)?;
-        println!("{},", json);
+        println!("{},", link);
     }
     println!("");
     Ok(())
