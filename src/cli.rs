@@ -12,9 +12,6 @@ struct CLI {
     /// Gives numeric depth for crawl.
     #[clap(short, long)]
     depth: Option<usize>,
-    /// Limits the number of parallel tasks.
-    #[clap(long, default_value = "1000")]
-    task_limit: usize,
     /// Path of file containing list of domains to be crawled.
     #[clap(short, long)]
     whitelist: Option<PathBuf>,
@@ -37,6 +34,9 @@ struct CLI {
     /// Takes screenshot if a word from wordlist is found in the page.
     #[clap(long)]
     selenium: bool,
+    /// Limits the number of parallel tasks.
+    #[clap(long, default_value = "1000")]
+    task_limit: usize,
 }
 
 pub async fn entry() {
