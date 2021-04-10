@@ -13,6 +13,12 @@ pub enum LinkType {
     Other,
 }
 
+impl std::default::Default for LinkType {
+    fn default() -> Self {
+        Self::Other
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Link {
     pub url: Url,
